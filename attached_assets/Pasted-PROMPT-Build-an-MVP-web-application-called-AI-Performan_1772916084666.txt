@@ -1,0 +1,161 @@
+PROMPT
+
+Build an MVP web application called AI Performance Insight Assistant.
+
+The goal of this app is to allow users to ask questions about performance metrics in natural language, automatically translate the question into structured metrics using NLP, retrieve relevant data, visualize the results, and explain the factors behind performance changes.
+
+The application should be simple, interactive, and focused on usability.
+
+Tech Stack
+
+Use the following stack:
+
+Python
+
+Streamlit for the UI
+
+Pandas for data processing
+
+Plotly for charts
+
+OpenAI API for natural language understanding and explanation generation
+
+The code should be clean, modular, and easy to extend.
+
+App Functionality
+1. Natural Language Query Input
+
+Create an input box where the user can type questions such as:
+
+"Why did revenue drop last month?"
+
+"Show sales trend for the last year"
+
+"Which products contributed most to profit growth?"
+
+The system should interpret the question and identify:
+
+the metric (e.g., revenue, cost, profit)
+
+the time range
+
+the intent (trend visualization or root cause analysis)
+
+2. Metric Mapping
+
+Implement a mapping layer that converts natural language terms into structured metrics.
+
+Example mapping:
+
+revenue → total_sales
+cost → logistics_cost
+profit → net_profit
+
+If the user asks about a metric that does not exist, return a helpful error message.
+
+3. Data Processing
+
+Create a sample dataset using Pandas that includes:
+
+date
+product
+region
+revenue
+cost
+profit
+
+Generate at least 1–2 years of simulated data so the app can demonstrate trend analysis.
+
+4. Visualization
+
+When the user asks about a metric trend:
+
+Display:
+
+a line chart showing the metric over time
+
+a bar chart showing breakdown by product or region
+
+Use Plotly for interactive charts.
+
+5. Root Cause Analysis
+
+If the user asks "why" a metric changed:
+
+Calculate the change in the selected metric over time
+
+Break down the change by dimensions such as:
+
+product
+
+region
+
+Identify which dimension contributed most to the increase or decrease.
+
+Display:
+
+top contributing factors
+
+comparison charts
+
+6. AI Insight Summary
+
+Use the OpenAI API to generate a concise explanation of the analysis.
+
+Example output:
+
+"Revenue decreased by 12% last month. The largest contributor was Product A in the European region, where sales dropped by 20%."
+
+Keep explanations short and business-friendly.
+
+UI Layout
+
+The app should contain:
+
+Title:
+AI Performance Insight Assistant
+
+Sections:
+
+User question input
+
+Interpreted query display
+
+Charts and data visualization
+
+Root cause analysis results
+
+AI-generated explanation
+
+File Structure
+
+Create the following structure:
+
+app.py
+data_generator.py
+nlp_parser.py
+analysis_engine.py
+visualization.py
+requirements.txt
+
+Extra Requirements
+
+The app should run with a single command.
+
+Include comments explaining key parts of the code.
+
+Use modular functions so each feature can be improved later.
+
+The app should work with simulated data without requiring an external database.
+
+Goal
+
+The final result should be an interactive analytics assistant that demonstrates:
+
+natural language data querying
+
+performance visualization
+
+root cause analysis
+
+AI-generated explanations
