@@ -90,47 +90,71 @@ export async function registerRoutes(
       Metric: ${interpretation.metric}, TimeRange: ${interpretation.timeRange}, Intent: ${interpretation.intent}.`;
       
       if (interpretation.intent === 'root_cause') {
-        // Calculate actual root causes with percentages by comparing first and last month
-        const firstMonth = trendData[0]?.value || 0;
-        const lastMonth = trendData[trendData.length - 1]?.value || 0;
-        const totalChange = firstMonth - lastMonth;
+        // Get first and last month as strings (YYYY-MM format)
+        const firstMonthStr = trendData[0]?.date;
+        const lastMonthStr = trendData[trendData.length - 1]?.date;
+        
+        // Helper to get YYYY-MM from date
+        const getDateMonth = (date: any) => {
+          if (date instanceof Date) {
+            return date.toISOString().slice(0, 7);
+          }
+          return String(date).slice(0, 7);
+        };
         
         // Analyze product performance
         const productPerformance = new Map();
         allData.forEach(d => {
           const key = d.product;
+          const dateMonth = getDateMonth(d.date);
+          
           if (!productPerformance.has(key)) {
-            productPerformance.set(key, { first: 0, last: 0, count: 0 });
+            productPerformance.set(key, { first: 0, last: 0 });
           }
           const perf = productPerformance.get(key);
-          perf.count++;
-          if (d.date <= trendData[0]?.date) perf.first += Number(d[interpretation.metric as keyof typeof d] || 0);
-          if (d.date >= trendData[trendData.length - 1]?.date) perf.last += Number(d[interpretation.metric as keyof typeof d] || 0);
+          const value = Number(d[interpretation.metric as keyof typeof d] || 0);
+          
+          if (dateMonth === firstMonthStr) perf.first += value;
+          if (dateMonth === lastMonthStr) perf.last += value;
         });
         
-        // Calculate percentages
-        const productImpact = Array.from(productPerformance.entries()).map(([name, perf]) => ({
-          name,
-          change: perf.first > 0 ? ((perf.first - perf.last) / perf.first) * 100 : 0
-        })).sort((a, b) => b.change - a.change);
+        // Calculate percentages for products
+        const productImpact = Array.from(productPerformance.entries())
+          .map(([name, perf]) => ({
+            name,
+            first: perf.first,
+            last: perf.last,
+            change: perf.first > 0 ? ((perf.first - perf.last) / perf.first) * 100 : 0
+          }))
+          .filter(p => p.first > 0 && p.change !== 0) // Only include if there's actual data and change
+          .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
         
         // Analyze region performance
         const regionPerformance = new Map();
         allData.forEach(d => {
           const key = d.region;
+          const dateMonth = getDateMonth(d.date);
+          
           if (!regionPerformance.has(key)) {
-            regionPerformance.set(key, { first: 0, last: 0, count: 0 });
+            regionPerformance.set(key, { first: 0, last: 0 });
           }
           const perf = regionPerformance.get(key);
-          perf.count++;
-          if (d.date <= trendData[0]?.date) perf.first += Number(d[interpretation.metric as keyof typeof d] || 0);
-          if (d.date >= trendData[trendData.length - 1]?.date) perf.last += Number(d[interpretation.metric as keyof typeof d] || 0);
+          const value = Number(d[interpretation.metric as keyof typeof d] || 0);
+          
+          if (dateMonth === firstMonthStr) perf.first += value;
+          if (dateMonth === lastMonthStr) perf.last += value;
         });
         
-        const regionImpact = Array.from(regionPerformance.entries()).map(([name, perf]) => ({
-          name,
-          change: perf.first > 0 ? ((perf.first - perf.last) / perf.first) * 100 : 0
-        })).sort((a, b) => b.change - a.change);
+        // Calculate percentages for regions
+        const regionImpact = Array.from(regionPerformance.entries())
+          .map(([name, perf]) => ({
+            name,
+            first: perf.first,
+            last: perf.last,
+            change: perf.first > 0 ? ((perf.first - perf.last) / perf.first) * 100 : 0
+          }))
+          .filter(r => r.first > 0 && r.change !== 0) // Only include if there's actual data and change
+          .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
         
         // Build root causes array with top contributors
         if (productImpact.length > 0) {
