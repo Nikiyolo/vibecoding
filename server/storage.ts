@@ -1,38 +1,58 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import { performanceMetrics, type InsertPerformanceMetric } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  getMetrics(): Promise<typeof performanceMetrics.$inferSelect[]>;
+  createMetric(metric: InsertPerformanceMetric): Promise<typeof performanceMetrics.$inferSelect>;
+  seedMetrics(): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
+export class DatabaseStorage implements IStorage {
+  async getMetrics() {
+    return await db.select().from(performanceMetrics);
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async createMetric(metric: InsertPerformanceMetric) {
+    const [inserted] = await db.insert(performanceMetrics).values(metric).returning();
+    return inserted;
   }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  
+  async seedMetrics() {
+    const existing = await this.getMetrics();
+    if (existing.length > 0) return;
+    
+    // Generate 12 months of simulated data
+    const products = ["Product A", "Product B", "Product C"];
+    const regions = ["North America", "Europe", "Asia"];
+    
+    const baseDate = new Date();
+    baseDate.setMonth(baseDate.getMonth() - 12);
+    
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(baseDate);
+      date.setMonth(baseDate.getMonth() + i);
+      
+      for (const product of products) {
+        for (const region of regions) {
+          // Add some randomness and a trend
+          const trend = i * 100;
+          const revenue = 1000 + Math.random() * 500 + trend;
+          const cost = 600 + Math.random() * 300 + (trend * 0.5);
+          const profit = revenue - cost;
+          
+          await this.createMetric({
+            date,
+            product,
+            region,
+            revenue: revenue.toFixed(2),
+            cost: cost.toFixed(2),
+            profit: profit.toFixed(2)
+          });
+        }
+      }
+    }
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
