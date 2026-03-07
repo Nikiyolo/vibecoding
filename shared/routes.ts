@@ -37,11 +37,11 @@ export const api = {
           }),
           trendData: z.array(z.any()), // flexible array for charts
           breakdownData: z.array(z.any()),
-          rootCause: z.object({
+          rootCauses: z.array(z.object({
             dimension: z.string(),
             topContributor: z.string(),
             changePercentage: z.number(),
-          }).optional(),
+          })),
           explanation: z.string(),
         }),
         400: errorSchemas.validation,

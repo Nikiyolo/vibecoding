@@ -200,29 +200,33 @@ export default function Home() {
                     {analyzeMutation.data.explanation}
                   </p>
 
-                  {analyzeMutation.data.rootCause && (
-                    <div className="mt-8 bg-orange-50 border border-orange-100 rounded-2xl p-5">
-                      <div className="flex items-center gap-2 text-orange-600 font-bold mb-3">
-                        <AlertTriangle className="w-5 h-5" />
-                        Root Cause Detected
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <span className="text-xs font-semibold text-orange-400 uppercase tracking-wider">Dimension</span>
-                          <p className="text-orange-900 font-medium">{analyzeMutation.data.rootCause.dimension}</p>
-                        </div>
-                        <div>
-                          <span className="text-xs font-semibold text-orange-400 uppercase tracking-wider">Top Contributor</span>
-                          <p className="text-orange-900 font-medium">{analyzeMutation.data.rootCause.topContributor}</p>
-                        </div>
-                        <div className="pt-2 border-t border-orange-200/60 flex items-center justify-between">
-                          <span className="text-sm font-medium text-orange-800">Impact</span>
-                          <span className={`text-lg font-bold flex items-center gap-1 ${analyzeMutation.data.rootCause.changePercentage < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                            {analyzeMutation.data.rootCause.changePercentage < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
-                            {Math.abs(analyzeMutation.data.rootCause.changePercentage)}%
+                  {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
+                    <div className="mt-8 space-y-3">
+                      <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-orange-600" />
+                        Root Causes
+                      </h4>
+                      {analyzeMutation.data.rootCauses.map((cause, idx) => (
+                        <div key={idx} className="bg-orange-50/60 border border-orange-100/60 rounded-xl p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-3 flex-1">
+                            <div className="w-8 h-8 rounded-lg bg-orange-200/40 flex items-center justify-center shrink-0">
+                              {cause.dimension === "product" ? (
+                                <span className="text-lg">📊</span>
+                              ) : (
+                                <span className="text-lg">🌍</span>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider">{cause.dimension}</p>
+                              <p className="text-sm font-medium text-orange-900">{cause.topContributor}</p>
+                            </div>
+                          </div>
+                          <span className="text-lg font-bold text-red-600 flex items-center gap-1 shrink-0 ml-2">
+                            <TrendingDown className="w-4 h-4" />
+                            {Math.abs(cause.changePercentage)}%
                           </span>
                         </div>
-                      </div>
+                      ))}
                     </div>
                   )}
                 </div>

@@ -85,28 +85,84 @@ export async function registerRoutes(
       });
       const breakdownData = Array.from(breakdownMap.values());
       
-      let rootCause;
+      let rootCauses = [];
       let explanationPrompt = `Explain the following data findings based on the user's query: "${query}".
       Metric: ${interpretation.metric}, TimeRange: ${interpretation.timeRange}, Intent: ${interpretation.intent}.`;
       
       if (interpretation.intent === 'root_cause') {
-        // Find top contributor (mock logic)
-        const sortedBreakdown = [...breakdownData].sort((a, b) => b.value - a.value);
-        if (sortedBreakdown.length > 0) {
-          rootCause = {
+        // Calculate actual root causes with percentages by comparing first and last month
+        const firstMonth = trendData[0]?.value || 0;
+        const lastMonth = trendData[trendData.length - 1]?.value || 0;
+        const totalChange = firstMonth - lastMonth;
+        
+        // Analyze product performance
+        const productPerformance = new Map();
+        allData.forEach(d => {
+          const key = d.product;
+          if (!productPerformance.has(key)) {
+            productPerformance.set(key, { first: 0, last: 0, count: 0 });
+          }
+          const perf = productPerformance.get(key);
+          perf.count++;
+          if (d.date <= trendData[0]?.date) perf.first += Number(d[interpretation.metric as keyof typeof d] || 0);
+          if (d.date >= trendData[trendData.length - 1]?.date) perf.last += Number(d[interpretation.metric as keyof typeof d] || 0);
+        });
+        
+        // Calculate percentages
+        const productImpact = Array.from(productPerformance.entries()).map(([name, perf]) => ({
+          name,
+          change: perf.first > 0 ? ((perf.first - perf.last) / perf.first) * 100 : 0
+        })).sort((a, b) => b.change - a.change);
+        
+        // Analyze region performance
+        const regionPerformance = new Map();
+        allData.forEach(d => {
+          const key = d.region;
+          if (!regionPerformance.has(key)) {
+            regionPerformance.set(key, { first: 0, last: 0, count: 0 });
+          }
+          const perf = regionPerformance.get(key);
+          perf.count++;
+          if (d.date <= trendData[0]?.date) perf.first += Number(d[interpretation.metric as keyof typeof d] || 0);
+          if (d.date >= trendData[trendData.length - 1]?.date) perf.last += Number(d[interpretation.metric as keyof typeof d] || 0);
+        });
+        
+        const regionImpact = Array.from(regionPerformance.entries()).map(([name, perf]) => ({
+          name,
+          change: perf.first > 0 ? ((perf.first - perf.last) / perf.first) * 100 : 0
+        })).sort((a, b) => b.change - a.change);
+        
+        // Build root causes array with top contributors
+        if (productImpact.length > 0) {
+          rootCauses.push({
             dimension: "product",
-            topContributor: sortedBreakdown[0].name,
-            changePercentage: 15.2, // mock value
-          };
-          explanationPrompt += `\nWe found that ${rootCause.topContributor} is the largest driver of the ${interpretation.metric}.`;
+            topContributor: productImpact[0].name,
+            changePercentage: -Math.round(productImpact[0].change * 10) / 10
+          });
+        }
+        if (regionImpact.length > 0) {
+          rootCauses.push({
+            dimension: "region",
+            topContributor: regionImpact[0].name,
+            changePercentage: -Math.round(regionImpact[0].change * 10) / 10
+          });
+        }
+        
+        const mainCause = rootCauses[0];
+        if (mainCause) {
+          explanationPrompt += `\nThe decline was primarily driven by ${mainCause.topContributor} which dropped by ${Math.abs(mainCause.changePercentage)}%.`;
+          if (rootCauses[1]) {
+            explanationPrompt += ` Additionally, the ${rootCauses[1].dimension} dimension shows ${rootCauses[1].topContributor} also contributed with a ${Math.abs(rootCauses[1].changePercentage)}% decline.`;
+          }
+          explanationPrompt += "\nProvide a brief summary with actionable recommendations to address this decline.";
         }
       }
       
-      // Generate explanation
+      // Generate explanation with recommendations
       const explanationCompletion = await openai.chat.completions.create({
          model: "gpt-5.1",
          messages: [
-           { role: "system", content: "You are a friendly business analyst. Provide a brief, 1-3 sentence summary explaining the data. Do not use markdown." },
+           { role: "system", content: "You are a friendly business analyst. Provide a brief 2-3 sentence summary explaining the data and include 1-2 specific, actionable recommendations to address the issue. Do not use markdown." },
            { role: "user", content: explanationPrompt }
          ]
       });
@@ -116,7 +172,7 @@ export async function registerRoutes(
         interpretation,
         trendData,
         breakdownData,
-        rootCause,
+        rootCauses,
         explanation
       });
       
