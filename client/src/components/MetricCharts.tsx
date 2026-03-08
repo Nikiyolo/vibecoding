@@ -41,20 +41,31 @@ export function TrendChart({ data, title }: ChartProps) {
   }
 
   const { x, y } = detectAxes(data);
+  
+  // Ensure data values are numbers
+  const processedData = data.map(item => ({
+    ...item,
+    [y]: Number(item[y as keyof typeof item]) || 0
+  }));
 
   return (
     <div className="w-full flex flex-col h-full">
       {title && <h3 className="text-lg font-semibold mb-6">{title}</h3>}
-      <div className="flex-1 min-h-[300px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+      <div className="flex-1 min-h-[300px] w-full">
+        <ResponsiveContainer width="100%" height={350}>
+          <LineChart 
+            data={processedData} 
+            margin={{ top: 10, right: 30, left: 0, bottom: 40 }}
+          >
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
             <XAxis 
               dataKey={x} 
               axisLine={false} 
               tickLine={false} 
               tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-              dy={10}
+              angle={-45}
+              textAnchor="end"
+              height={60}
             />
             <YAxis 
               axisLine={false} 
@@ -63,26 +74,35 @@ export function TrendChart({ data, title }: ChartProps) {
               tickFormatter={(value) => {
                 if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
                 if (value >= 1000) return `$${(value / 1000).toFixed(0)}k`;
-                return value;
+                return `$${value}`;
               }}
+              width={60}
             />
             <Tooltip 
               contentStyle={{ 
                 borderRadius: '12px', 
                 border: 'none', 
-                boxShadow: '0 10px 25px rgba(0,0,0,0.1)' 
+                boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                backgroundColor: 'hsl(var(--card))',
+                color: 'hsl(var(--foreground))'
               }}
               labelStyle={{ fontWeight: 600, color: 'hsl(var(--foreground))' }}
+              formatter={(value: any) => {
+                const num = Number(value) || 0;
+                if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
+                if (num >= 1000) return `$${(num / 1000).toFixed(1)}k`;
+                return `$${num.toFixed(2)}`;
+              }}
             />
-            <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }}/>
             <Line 
-              type="monotone" 
+              type="linear" 
               dataKey={y} 
               stroke="hsl(var(--primary))" 
               strokeWidth={3}
-              dot={{ r: 4, fill: "hsl(var(--primary))", strokeWidth: 0 }}
-              activeDot={{ r: 6, stroke: "hsl(var(--background))", strokeWidth: 2 }}
+              dot={{ r: 5, fill: "hsl(var(--primary))", strokeWidth: 0 }}
+              activeDot={{ r: 7, stroke: "hsl(var(--background))", strokeWidth: 2 }}
               animationDuration={1500}
+              isAnimationActive={true}
             />
           </LineChart>
         </ResponsiveContainer>
