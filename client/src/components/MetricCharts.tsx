@@ -97,20 +97,31 @@ export function BreakdownChart({ data, title }: ChartProps) {
   }
 
   const { x, y } = detectAxes(data);
+  
+  // Ensure data values are numbers
+  const processedData = data.map(item => ({
+    ...item,
+    [y]: Number(item[y as keyof typeof item]) || 0
+  }));
 
   return (
     <div className="w-full flex flex-col h-full">
       <h3 className="text-lg font-semibold mb-6">{title}</h3>
-      <div className="flex-1 min-h-[300px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+      <div className="flex-1 min-h-[300px] w-full">
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart 
+            data={processedData}
+            margin={{ top: 10, right: 30, left: 10, bottom: 60 }}
+          >
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
             <XAxis 
               dataKey={x} 
               axisLine={false} 
               tickLine={false} 
               tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-              dy={10}
+              angle={-45}
+              textAnchor="end"
+              height={80}
             />
             <YAxis 
               axisLine={false} 
@@ -119,21 +130,30 @@ export function BreakdownChart({ data, title }: ChartProps) {
               tickFormatter={(value) => {
                 if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
                 if (value >= 1000) return `$${(value / 1000).toFixed(0)}k`;
-                return value;
+                return `$${value}`;
               }}
             />
             <Tooltip 
               contentStyle={{ 
                 borderRadius: '12px', 
                 border: 'none', 
-                boxShadow: '0 10px 25px rgba(0,0,0,0.1)' 
+                boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                backgroundColor: 'hsl(var(--card))',
+                color: 'hsl(var(--foreground))'
               }}
-              cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
+              labelStyle={{ color: 'hsl(var(--foreground))' }}
+              formatter={(value: any) => {
+                const num = Number(value) || 0;
+                if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
+                if (num >= 1000) return `$${(num / 1000).toFixed(1)}k`;
+                return `$${num.toFixed(2)}`;
+              }}
+              cursor={{ fill: 'hsl(var(--muted))', opacity: 0.2 }}
             />
             <Bar 
               dataKey={y} 
-              fill="hsl(var(--accent))" 
-              radius={[4, 4, 0, 0]} 
+              fill="hsl(var(--chart-1))" 
+              radius={[8, 8, 0, 0]}
               animationDuration={1500}
             />
           </BarChart>
