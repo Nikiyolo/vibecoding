@@ -184,70 +184,90 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Main Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               
-              {/* Executive Summary & Root Cause */}
-              <div className="col-span-1 flex flex-col gap-6">
-                <div className="bg-card border border-border shadow-xl shadow-black/5 rounded-3xl p-6 h-full flex flex-col relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-2xl"></div>
-                  
-                  <div className="flex items-center gap-3 mb-4 text-primary">
-                    <Sparkles className="w-6 h-6" />
-                    <h3 className="text-xl font-bold text-foreground">AI Insight</h3>
+              {/* Left Sidebar - AI Insights & Root Causes */}
+              <div className="lg:col-span-1 flex flex-col gap-6">
+                {/* AI Insight Box */}
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 flex flex-col">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Sparkles className="w-5 h-5 text-blue-600" />
+                    <h3 className="font-bold text-foreground">AI Summary</h3>
                   </div>
-                  
-                  <p className="text-muted-foreground leading-relaxed flex-1">
+                  <p className="text-sm text-foreground/80 leading-relaxed">
                     {analyzeMutation.data.explanation}
                   </p>
+                </div>
 
-                  {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
-                    <div className="mt-8 space-y-3">
-                      <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-orange-600" />
-                        Root Causes
-                      </h4>
+                {/* Root Causes Box */}
+                {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
+                  <div className="bg-white border border-orange-200 rounded-2xl p-6 flex flex-col">
+                    <div className="flex items-center gap-2 mb-4">
+                      <AlertTriangle className="w-5 h-5 text-orange-600" />
+                      <h3 className="font-bold text-foreground">Root Causes</h3>
+                    </div>
+                    <div className="space-y-4">
                       {analyzeMutation.data.rootCauses.map((cause, idx) => (
-                        <div key={idx} className="bg-orange-50/60 border border-orange-100/60 rounded-xl p-3 flex items-center justify-between">
-                          <div className="flex items-center gap-3 flex-1">
-                            <div className="w-8 h-8 rounded-lg bg-orange-200/40 flex items-center justify-center shrink-0">
-                              {cause.dimension === "product" ? (
-                                <span className="text-lg">📊</span>
-                              ) : (
-                                <span className="text-lg">🌍</span>
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider">{cause.dimension}</p>
-                              <p className="text-sm font-medium text-orange-900">{cause.topContributor}</p>
+                        <div key={idx} className="pb-4 border-b border-gray-200 last:border-b-0 last:pb-0">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{cause.dimension}</p>
+                              <p className="text-sm font-semibold text-foreground mt-1">{cause.topContributor}</p>
                             </div>
                           </div>
-                          <span className="text-lg font-bold text-red-600 flex items-center gap-1 shrink-0 ml-2">
+                          <div className="flex items-center gap-1 text-red-600 font-bold">
                             <TrendingDown className="w-4 h-4" />
-                            {Math.abs(cause.changePercentage)}%
+                            <span className="text-lg">{Math.abs(cause.changePercentage)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Main Content - Charts & Tables */}
+              <div className="lg:col-span-3 flex flex-col gap-6">
+                {/* Trend Chart */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                  <h3 className="text-lg font-bold mb-6 text-foreground">Revenue Trend</h3>
+                  <TrendChart 
+                    data={analyzeMutation.data.trendData} 
+                    title="" 
+                  />
+                </div>
+
+                {/* Breakdown Section */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Breakdown Chart */}
+                  <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                    <h3 className="text-lg font-bold mb-6 text-foreground">By Product</h3>
+                    <BreakdownChart 
+                      data={analyzeMutation.data.breakdownData} 
+                      title="" 
+                    />
+                  </div>
+
+                  {/* Breakdown Table */}
+                  <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                    <h3 className="text-lg font-bold mb-6 text-foreground">Product Details</h3>
+                    <div className="space-y-3">
+                      {analyzeMutation.data.breakdownData && analyzeMutation.data.breakdownData.map((item: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-b-0 last:pb-0">
+                          <div className="flex items-center gap-3">
+                            <div className="w-3 h-3 rounded-full bg-blue-500" style={{ 
+                              backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'][idx % 3]
+                            }}></div>
+                            <span className="text-sm font-medium text-foreground">{item.name}</span>
+                          </div>
+                          <span className="text-sm font-semibold text-foreground">
+                            ${(Number(item.value) / 1000).toFixed(1)}k
                           </span>
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Charts */}
-              <div className="col-span-1 lg:col-span-2 flex flex-col gap-6">
-                <div className="bg-card border border-border shadow-xl shadow-black/5 rounded-3xl p-6 w-full">
-                  <TrendChart 
-                    data={analyzeMutation.data.trendData} 
-                    title="Performance Trend Over Time" 
-                  />
-                </div>
-              </div>
-
-              <div className="col-span-full">
-                <div className="bg-card border border-border shadow-xl shadow-black/5 rounded-3xl p-6 w-full">
-                  <BreakdownChart 
-                    data={analyzeMutation.data.breakdownData} 
-                    title="Metric Breakdown" 
-                  />
+                  </div>
                 </div>
               </div>
 

@@ -44,7 +44,7 @@ export function TrendChart({ data, title }: ChartProps) {
 
   return (
     <div className="w-full flex flex-col h-full">
-      <h3 className="text-lg font-semibold mb-6">{title}</h3>
+      {title && <h3 className="text-lg font-semibold mb-6">{title}</h3>}
       <div className="flex-1 min-h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
@@ -106,7 +106,7 @@ export function BreakdownChart({ data, title }: ChartProps) {
 
   return (
     <div className="w-full flex flex-col h-full">
-      <h3 className="text-lg font-semibold mb-6">{title}</h3>
+      {title && <h3 className="text-lg font-semibold mb-6">{title}</h3>}
       <div className="flex-1 min-h-[300px] w-full">
         <ResponsiveContainer width="100%" height={300}>
           <BarChart 
