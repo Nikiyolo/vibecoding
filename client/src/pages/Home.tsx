@@ -187,44 +187,54 @@ export default function Home() {
             {/* Main Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               
-              {/* Left Sidebar - AI Insights & Root Causes */}
-              <div className="lg:col-span-1 flex flex-col gap-6">
-                {/* AI Insight Box */}
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 flex flex-col">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Sparkles className="w-5 h-5 text-blue-600" />
-                    <h3 className="font-bold text-foreground">AI Summary</h3>
+              {/* Left Sidebar - Structured AI Insights */}
+              <div className="lg:col-span-1 flex flex-col gap-4">
+                
+                {/* Trend Description */}
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart3 className="w-5 h-5 text-blue-600" />
+                    <h3 className="font-bold text-sm text-foreground">Trend</h3>
                   </div>
-                  <p className="text-sm text-foreground/80 leading-relaxed">
-                    {analyzeMutation.data.explanation}
+                  <p className="text-xs leading-relaxed text-foreground/85">
+                    {analyzeMutation.data.trendDescription}
                   </p>
                 </div>
 
-                {/* Root Causes Box */}
+                {/* Root Causes Analysis */}
                 {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
-                  <div className="bg-white border border-orange-200 rounded-2xl p-6 flex flex-col">
-                    <div className="flex items-center gap-2 mb-4">
+                  <div className="bg-white border border-orange-200 rounded-2xl p-5">
+                    <div className="flex items-center gap-2 mb-3">
                       <AlertTriangle className="w-5 h-5 text-orange-600" />
-                      <h3 className="font-bold text-foreground">Root Causes</h3>
+                      <h3 className="font-bold text-sm text-foreground">Root Causes</h3>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-2 mb-3">
                       {analyzeMutation.data.rootCauses.map((cause, idx) => (
-                        <div key={idx} className="pb-4 border-b border-gray-200 last:border-b-0 last:pb-0">
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{cause.dimension}</p>
-                              <p className="text-sm font-semibold text-foreground mt-1">{cause.topContributor}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1 text-red-600 font-bold">
-                            <TrendingDown className="w-4 h-4" />
-                            <span className="text-lg">{Math.abs(cause.changePercentage)}%</span>
+                        <div key={idx} className="pb-2 border-b border-gray-200 last:border-b-0 last:pb-0">
+                          <p className="text-xs font-semibold text-gray-500 uppercase">{cause.dimension}</p>
+                          <div className="flex items-center justify-between mt-1">
+                            <p className="text-xs font-medium text-foreground">{cause.topContributor}</p>
+                            <span className="text-xs font-bold text-red-600">-{Math.abs(cause.changePercentage)}%</span>
                           </div>
                         </div>
                       ))}
                     </div>
+                    <p className="text-xs leading-relaxed text-foreground/85 border-t border-gray-200 pt-3">
+                      {analyzeMutation.data.rootCausesDescription}
+                    </p>
                   </div>
                 )}
+
+                {/* Actionable Suggestions */}
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Lightbulb className="w-5 h-5 text-green-600" />
+                    <h3 className="font-bold text-sm text-foreground">Suggestions</h3>
+                  </div>
+                  <p className="text-xs leading-relaxed text-foreground/85">
+                    {analyzeMutation.data.suggestions}
+                  </p>
+                </div>
               </div>
 
               {/* Main Content - Charts & Tables */}

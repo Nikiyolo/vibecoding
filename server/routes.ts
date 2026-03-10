@@ -182,22 +182,59 @@ export async function registerRoutes(
         }
       }
       
-      // Generate explanation with recommendations
-      const explanationCompletion = await openai.chat.completions.create({
-         model: "gpt-5.1",
-         messages: [
-           { role: "system", content: "You are a friendly business analyst. Provide a brief 2-3 sentence summary explaining the data and include 1-2 specific, actionable recommendations to address the issue. Do not use markdown." },
-           { role: "user", content: explanationPrompt }
-         ]
-      });
-      const explanation = explanationCompletion.choices[0]?.message?.content || "No explanation could be generated.";
+      // Generate three separate AI descriptions
+      const trendPrompt = `Based on this data: ${explanationPrompt}
+      
+      Provide a brief 1-2 sentence description of the overall trend (e.g., declining, growing, stable). Focus on what happened, not why.`;
+      
+      const rootCausesPrompt = `Based on this data: ${explanationPrompt}
+      
+      The top contributors to the change are: ${rootCauses.map(rc => `${rc.topContributor} (${rc.dimension}, ${Math.abs(rc.changePercentage)}%)`).join(', ')}.
+      
+      Provide a brief 2-3 sentence analysis of why these specific products and regions are underperforming. Include the percentage impacts.`;
+      
+      const suggestionsPrompt = `Based on this data: ${explanationPrompt}
+      
+      The decline was driven by: ${rootCauses.map(rc => rc.topContributor).join(', ')}.
+      
+      Provide 2-3 specific, actionable recommendations to address this decline. Be concrete and practical.`;
+
+      const [trendResponse, causesResponse, suggestionsResponse] = await Promise.all([
+        openai.chat.completions.create({
+          model: "gpt-5.1",
+          messages: [
+            { role: "system", content: "You are a friendly business analyst. Be concise." },
+            { role: "user", content: trendPrompt }
+          ]
+        }),
+        openai.chat.completions.create({
+          model: "gpt-5.1",
+          messages: [
+            { role: "system", content: "You are a friendly business analyst. Be concise and include specific percentages." },
+            { role: "user", content: rootCausesPrompt }
+          ]
+        }),
+        openai.chat.completions.create({
+          model: "gpt-5.1",
+          messages: [
+            { role: "system", content: "You are a friendly business analyst. Provide actionable, specific recommendations." },
+            { role: "user", content: suggestionsPrompt }
+          ]
+        })
+      ]);
+
+      const trendDescription = trendResponse.choices[0]?.message?.content || "Unable to generate trend description.";
+      const rootCausesDescription = causesResponse.choices[0]?.message?.content || "Unable to generate root causes analysis.";
+      const suggestions = suggestionsResponse.choices[0]?.message?.content || "Unable to generate suggestions.";
 
       res.json({
         interpretation,
         trendData,
         breakdownData,
         rootCauses,
-        explanation
+        trendDescription,
+        rootCausesDescription,
+        suggestions
       });
       
     } catch (err) {
