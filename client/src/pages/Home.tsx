@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, ArrowRight, BarChart3, Search, Lightbulb, AlertTriangle, TrendingDown, TrendingUp, HelpCircle } from "lucide-react";
 import { useAnalyzeQuery } from "../hooks/use-analyze";
 import { TrendChart, BreakdownChart } from "../components/MetricCharts";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -231,9 +233,11 @@ export default function Home() {
                     <Lightbulb className="w-5 h-5 text-green-600" />
                     <h3 className="font-bold text-sm text-foreground">Suggestions</h3>
                   </div>
-                  <p className="text-xs leading-relaxed text-foreground/85">
-                    {analyzeMutation.data.suggestions}
-                  </p>
+                  <div className="text-xs leading-relaxed text-foreground/85 prose prose-xs max-w-none prose-headings:text-foreground prose-strong:text-foreground prose-p:my-1 prose-li:my-0.5 prose-ul:my-1 prose-ol:my-1">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {analyzeMutation.data.suggestions}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               </div>
 
