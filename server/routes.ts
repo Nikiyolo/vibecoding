@@ -784,72 +784,93 @@ export async function registerRoutes(
         });
       }
       
-      // Helper to check time range match
+      // Helper to check time range match — mirrors the main dateMatchesTimeRange logic
       const matchesTimeRange = (dateStr: string, timeRange?: string): boolean => {
         if (!timeRange) return true;
         const year = dateStr.slice(0, 4);
         const month = dateStr.slice(5, 7);
+        const lower = timeRange.toLowerCase();
+        const now = new Date();
+        const ny = now.getFullYear();
+        const nm = now.getMonth();
+        const isoKey = (y: number, m: number) => new Date(y, m, 1).toISOString().slice(0, 7);
+
+        if (lower.includes("last month") || lower.includes("previous month")) return dateStr === isoKey(ny, nm - 1);
+        if (lower.includes("this month") || lower.includes("current month")) return dateStr === isoKey(ny, nm);
+        if (lower.includes("last quarter") || lower.includes("previous quarter")) {
+          const lqStart = new Date(ny, Math.floor(nm / 3) * 3 - 3, 1);
+          return [0, 1, 2].map(i => isoKey(lqStart.getFullYear(), lqStart.getMonth() + i)).includes(dateStr);
+        }
+        if (lower.includes("this quarter") || lower.includes("current quarter")) {
+          const cqStart = Math.floor(nm / 3) * 3;
+          return [0, 1, 2].map(i => isoKey(ny, cqStart + i)).includes(dateStr);
+        }
+        if (lower.includes("last year") || lower.includes("previous year")) return year === String(ny - 1);
+        if (lower.includes("this year") || lower.includes("current year")) return year === String(ny);
         if (/^\d{4}$/.test(timeRange)) return year === timeRange;
-        if (timeRange.toLowerCase().includes("q1")) return ["01","02","03"].includes(month);
-        if (timeRange.toLowerCase().includes("q2")) return ["04","05","06"].includes(month);
-        if (timeRange.toLowerCase().includes("q3")) return ["07","08","09"].includes(month);
-        if (timeRange.toLowerCase().includes("q4")) return ["10","11","12"].includes(month);
+        const yearInRange = timeRange.match(/\b(20\d{2})\b/);
+        const ry = yearInRange ? yearInRange[1] : null;
+        if (lower.includes("q1")) return ["01","02","03"].includes(month) && (!ry || year === ry);
+        if (lower.includes("q2")) return ["04","05","06"].includes(month) && (!ry || year === ry);
+        if (lower.includes("q3")) return ["07","08","09"].includes(month) && (!ry || year === ry);
+        if (lower.includes("q4")) return ["10","11","12"].includes(month) && (!ry || year === ry);
+        const mm = (m: string) => month === m && (!ry || year === ry);
+        if (lower.includes("january") || lower.includes("jan")) return mm("01");
+        if (lower.includes("february") || lower.includes("feb")) return mm("02");
+        if (lower.includes("march") || lower.includes("mar")) return mm("03");
+        if (lower.includes("april") || lower.includes("apr")) return mm("04");
+        if (lower.includes("may")) return mm("05");
+        if (lower.includes("june") || lower.includes("jun")) return mm("06");
+        if (lower.includes("july") || lower.includes("jul")) return mm("07");
+        if (lower.includes("august") || lower.includes("aug")) return mm("08");
+        if (lower.includes("september") || lower.includes("sep")) return mm("09");
+        if (lower.includes("october") || lower.includes("oct")) return mm("10");
+        if (lower.includes("november") || lower.includes("nov")) return mm("11");
+        if (lower.includes("december") || lower.includes("dec")) return mm("12");
+        if (ry) return year === ry;
         return true;
       };
-      
-      // Filter data by parentDimension/parentValue and timeRange
-      const aggregateMap = new Map<string, { value: number; count: number }>();
-      
+
+      // Aggregate by drill-level key; track profit + revenue separately for weighted margin
+      const aggregateMap = new Map<string, { metricSum: number; revenueSum: number }>();
+
       allData.forEach(d => {
         const dateStr = new Date(d.date).toISOString().slice(0, 7);
         if (!matchesTimeRange(dateStr, input.timeRange)) return;
-        
+
         const h = hierarchyMap.get(d.skuId);
         if (!h) return;
-        
-        // Check if this record belongs to the parent dimension's value
+
         let matchesParent = false;
         if (input.parentDimension === "category") matchesParent = h.category === input.parentValue;
         else if (input.parentDimension === "subcategory") matchesParent = h.subcategory === input.parentValue;
         else if (input.parentDimension === "material") matchesParent = h.material === input.parentValue;
         else if (input.parentDimension === "region") matchesParent = d.region === input.parentValue;
-        
         if (!matchesParent) return;
-        
-        // Get the drill-level key
+
         let drillKey = "Unknown";
         if (input.drillLevel === "category") drillKey = h.category;
         else if (input.drillLevel === "subcategory") drillKey = h.subcategory;
         else if (input.drillLevel === "material") drillKey = h.material;
         else if (input.drillLevel === "sku") drillKey = h.sku;
         else if (input.drillLevel === "region") drillKey = d.region;
-        
+
         const revenue = Number(d.revenue) || 0;
         const cost = Number(d.cost) || 0;
         const profit = Number(d.profit) || 0;
-        
-        let metricValue = 0;
-        if (input.metric === "profit") {
-          metricValue = revenue > 0 ? (profit / revenue) * 100 : 0;
-        } else if (input.metric === "cost") {
-          metricValue = cost;
-        } else {
-          metricValue = revenue;
-        }
-        
-        if (!aggregateMap.has(drillKey)) {
-          aggregateMap.set(drillKey, { value: 0, count: 0 });
-        }
+
+        if (!aggregateMap.has(drillKey)) aggregateMap.set(drillKey, { metricSum: 0, revenueSum: 0 });
         const entry = aggregateMap.get(drillKey)!;
-        entry.value += metricValue;
-        entry.count += 1;
+        entry.metricSum += input.metric === "profit" ? profit : input.metric === "cost" ? cost : revenue;
+        entry.revenueSum += revenue;
       });
-      
-      const drillDownData = Array.from(aggregateMap.entries()).map(([name, { value, count }]) => ({
+
+      // Revenue/cost: total sum. Profit margin: weighted average.
+      const drillDownData = Array.from(aggregateMap.entries()).map(([name, { metricSum, revenueSum }]) => ({
         name,
         value: input.metric === "profit"
-          ? parseFloat((value / count).toFixed(2))
-          : parseFloat((value / count).toFixed(2))
+          ? parseFloat((revenueSum > 0 ? (metricSum / revenueSum) * 100 : 0).toFixed(2))
+          : parseFloat(metricSum.toFixed(2)),
       })).sort((a, b) => b.value - a.value);
       
       res.json({ drillDownData });
