@@ -23,7 +23,7 @@ interface CausalCrossTableProps {
 }
 
 function formatValue(value: number, metric: string): string {
-  if (metric === "profit") return `${value.toFixed(1)}%`;
+  if (metric === "profit_margin") return `${value.toFixed(1)}%`;
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}k`;
   return `$${value.toFixed(0)}`;
@@ -32,7 +32,7 @@ function formatValue(value: number, metric: string): string {
 function getHeatColor(value: number, min: number, max: number, metric: string): string {
   if (max === min) return "hsl(210 70% 96%)";
   const ratio = (value - min) / (max - min);
-  if (metric === "profit") {
+  if (metric === "profit_margin" || metric === "profit") {
     const lightness = Math.round(96 - ratio * 36);
     const saturation = Math.round(40 + ratio * 40);
     return `hsl(142 ${saturation}% ${lightness}%)`;
@@ -90,7 +90,8 @@ export function CausalCrossTable({ data, metric }: CausalCrossTableProps) {
   const maxVal = Math.max(...allCellVals);
 
   const metricLabel =
-    metric === "profit" ? "Profit Margin" :
+    metric === "profit_margin" ? "Profit Margin" :
+    metric === "profit" ? "Profit" :
     metric === "cost" ? "Cost" : "Revenue";
 
   const periodColSpan = regions.length + 1; // regions + Total column
@@ -247,7 +248,7 @@ export function CausalCrossTable({ data, metric }: CausalCrossTableProps) {
         <div
           className="h-3 w-24 rounded"
           style={{
-            background: metric === "profit"
+            background: (metric === "profit_margin" || metric === "profit")
               ? "linear-gradient(to right, hsl(142 40% 96%), hsl(142 80% 60%))"
               : "linear-gradient(to right, hsl(210 40% 96%), hsl(210 85% 60%))"
           }}

@@ -23,6 +23,12 @@ interface DrillDownResult {
   data: { name: string; value: number }[];
 }
 
+function metricLabel(metric: string): string {
+  if (metric === "profit_margin") return "Profit Margin (%)";
+  if (metric === "profit") return "Profit ($)";
+  return metric.charAt(0).toUpperCase() + metric.slice(1);
+}
+
 export default function Home() {
   const [query, setQuery] = useState("");
   const analyzeMutation = useAnalyzeQuery();
@@ -251,7 +257,7 @@ export default function Home() {
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm font-semibold text-muted-foreground mr-2 uppercase tracking-wider">Interpreted Query:</span>
               <div className="px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-full font-medium text-sm flex items-center gap-2">
-                <BarChart3 className="w-4 h-4" /> Metric: {analyzeMutation.data.interpretation.metric}
+                <BarChart3 className="w-4 h-4" /> Metric: {metricLabel(analyzeMutation.data.interpretation.metric)}
               </div>
               <div className="px-4 py-2 bg-accent/10 text-accent border border-accent/20 rounded-full font-medium text-sm flex items-center gap-2">
                 <Lightbulb className="w-4 h-4" /> Intent: {analyzeMutation.data.interpretation.intent}
@@ -271,7 +277,7 @@ export default function Home() {
               if (!isCausalQuery && !hasBreakdown) {
                 const isHighestQuery = topCategory !== null && topCategory !== undefined;
                 const metric = analyzeMutation.data.interpretation.metric;
-                const displayMetric = metric === "profit" ? "Profit Margin (%)" : metric.charAt(0).toUpperCase() + metric.slice(1);
+                const displayMetric = metricLabel(metric);
                 
                 return (
                   <div className="w-full flex flex-col gap-6">
@@ -279,7 +285,7 @@ export default function Home() {
                       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6">
                         <p className="text-sm text-gray-600 uppercase font-semibold mb-2">Highest Category</p>
                         <h2 className="text-3xl font-bold text-foreground">{topCategory}</h2>
-                        {metric === "profit" && (
+                        {(metric === "profit_margin" || metric === "profit") && (
                           <p className="text-sm text-gray-600 mt-2">
                             Shows {displayMetric} trend for {topCategory}
                           </p>
@@ -307,7 +313,7 @@ export default function Home() {
                   <div className="flex flex-col gap-6 w-full">
                     <div className="bg-white border border-gray-200 rounded-2xl p-6">
                       <h3 className="text-lg font-bold mb-2 text-foreground">
-                        {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Product × Region
+                        {metricLabel(analyzeMutation.data.interpretation.metric)} — Product × Region
                       </h3>
                       <p className="text-xs text-muted-foreground mb-5">Aggregated by product category and sales region</p>
                       <CrossTable 
@@ -375,7 +381,7 @@ export default function Home() {
                       {(analyzeMutation.data as any).causalCrossTableData ? (
                         <>
                           <h3 className="text-lg font-bold mb-2 text-foreground">
-                            {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Period Comparison by Region
+                            {metricLabel(analyzeMutation.data.interpretation.metric)} — Period Comparison by Region
                           </h3>
                           <p className="text-xs text-muted-foreground mb-5">
                             Current vs prior period, broken down by product category and sales region
@@ -388,7 +394,7 @@ export default function Home() {
                       ) : (
                         <>
                           <h3 className="text-lg font-bold mb-2 text-foreground">
-                            {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Product × Region
+                            {metricLabel(analyzeMutation.data.interpretation.metric)} — Product × Region
                           </h3>
                           <p className="text-xs text-muted-foreground mb-5">Aggregated by product category and sales region</p>
                           <CrossTable

@@ -31,7 +31,11 @@ export async function registerRoutes(
       
       // Call OpenAI to parse the natural language query and extract intent
       const systemPrompt = `You are a data analysis assistant. Parse the user's query and extract the following:
-      1. metric: The metric they are asking about (revenue, cost, profit, etc.). Map to 'revenue', 'cost', or 'profit'. If unmapped, use the term they used.
+      1. metric: The metric they are asking about. Use EXACTLY one of these four values:
+         - 'revenue'       → if the query mentions revenue or sales
+         - 'cost'          → if the query mentions cost or expenses
+         - 'profit'        → if the query mentions profit (the dollar amount: revenue minus cost)
+         - 'profit_margin' → ONLY if the query explicitly mentions margin, profit margin, margin %, or profitability ratio
       2. timeRange: The time period they are asking about (e.g., 'last month', 'last year', 'all time').
       3. intent: 'trend' (if they want to see how it changes over time) or 'root_cause' (if they are asking 'why' it changed).
       
@@ -50,14 +54,21 @@ export async function registerRoutes(
       try {
         const parsed = JSON.parse(completion.choices[0]?.message?.content || "{}");
         interpretation = { ...interpretation, ...parsed };
+        // Ensure null AI values never override defaults
+        if (!interpretation.metric) interpretation.metric = "revenue";
+        if (!interpretation.timeRange) interpretation.timeRange = "all time";
+        if (!interpretation.intent) interpretation.intent = "trend";
       } catch (e) {
         console.error("Failed to parse intent", e);
       }
       
-      const allowedMetrics = ["revenue", "cost", "profit"];
-      if (!allowedMetrics.includes(interpretation.metric.toLowerCase())) {
-        // Fallback to revenue if unknown, or we could return an error message to display
-        interpretation.metric = "revenue"; 
+      // Normalize AI output: handle "profit margin" (spaced) → "profit_margin"
+      const normalised = interpretation.metric.toLowerCase().replace(/\s+/g, "_");
+      interpretation.metric = normalised;
+
+      const allowedMetrics = ["revenue", "cost", "profit", "profit_margin"];
+      if (!allowedMetrics.includes(interpretation.metric)) {
+        interpretation.metric = "revenue";
       }
       
       // Fetch data
@@ -184,8 +195,8 @@ export async function registerRoutes(
       
       // Find the top category for any metric when the query asks "highest" / "top"
       if (isHighestQuery) {
-        if (interpretation.metric === "profit") {
-          // For profit margin: use weighted average (profitSum / revenueSum)
+        if (interpretation.metric === "profit_margin") {
+          // For profit margin %: use weighted average (profitSum / revenueSum)
           const marginByCategory = new Map<string, { profitSum: number; revenueSum: number }>();
           allData.forEach(d => {
             const dateStr = new Date(d.date).toISOString().slice(0, 7);
@@ -228,7 +239,7 @@ export async function registerRoutes(
       
       if (isHighestQuery) {
         // Build multi-series trend data by category for any metric
-        const isProfit = interpretation.metric === "profit";
+        const isProfitMargin = interpretation.metric === "profit_margin";
         const categoryTrendMap = new Map<string, Map<string, { value: number; count: number }>>();
 
         allData.forEach(d => {
@@ -239,9 +250,11 @@ export async function registerRoutes(
           const categoryName = hierarchy?.category || "Unknown";
           const revenue = Number(d.revenue) || 0;
           const profit = Number(d.profit) || 0;
-          const metricValue = isProfit
+          const metricValue = isProfitMargin
             ? (revenue > 0 ? (profit / revenue) * 100 : 0)
-            : Number(d[interpretation.metric as keyof typeof d]) || 0;
+            : (interpretation.metric === "profit"
+                ? profit
+                : Number(d[interpretation.metric as keyof typeof d]) || 0);
 
           if (!categoryTrendMap.has(categoryName)) categoryTrendMap.set(categoryName, new Map());
           const catMap = categoryTrendMap.get(categoryName)!;
@@ -259,9 +272,9 @@ export async function registerRoutes(
           const row: any = { date: dateKey };
           categoryTrendMap.forEach((catMap, categoryName) => {
             const entry = catMap.get(dateKey);
-            // profit margin → average; revenue/cost → running sum
+            // profit_margin → average; revenue/cost/profit → running sum
             row[categoryName] = entry
-              ? isProfit
+              ? isProfitMargin
                 ? parseFloat((entry.value / entry.count).toFixed(2))
                 : parseFloat(entry.value.toFixed(2))
               : 0;
@@ -281,22 +294,22 @@ export async function registerRoutes(
           }
           const entry = trendMap.get(dateKey)!;
           
-          // Calculate profit margin if metric is profit
-          if (interpretation.metric === "profit") {
+          if (interpretation.metric === "profit_margin") {
             const revenue = Number(d.revenue) || 0;
             const profit = Number(d.profit) || 0;
-            const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
-            entry.value += profitMargin;
+            entry.value += revenue > 0 ? (profit / revenue) * 100 : 0;
+          } else if (interpretation.metric === "profit") {
+            entry.value += Number(d.profit) || 0;
           } else {
             entry.value += Number(d[interpretation.metric as keyof typeof d] || 0);
           }
           entry.count += 1;
         });
         
-        // Average the values
+        // Average profit_margin values; sum everything else
         trendData = Array.from(trendMap.values()).map(item => ({
           date: item.date,
-          value: interpretation.metric === "profit" && item.count > 0 
+          value: interpretation.metric === "profit_margin" && item.count > 0 
             ? parseFloat((item.value / item.count).toFixed(2))
             : item.value
         })).sort((a, b) => a.date.localeCompare(b.date));
@@ -326,16 +339,17 @@ export async function registerRoutes(
         }
         const entry = breakdownMap.get(dimensionValue)!;
         // Accumulate raw metric sum and revenue sum for weighted profit margin later
-        entry.metricSum += interpretation.metric === "profit" ? profit
+        entry.metricSum += interpretation.metric === "profit_margin" ? profit
+          : interpretation.metric === "profit" ? profit
           : interpretation.metric === "cost" ? cost
           : revenue;
         entry.revenueSum += revenue;
       });
 
-      // For revenue/cost: return total. For profit margin: weighted average (profitSum / revenueSum).
+      // For revenue/cost/profit: return total. For profit_margin: weighted average (profitSum / revenueSum).
       const breakdownData = Array.from(breakdownMap.values()).map(item => ({
         name: item.name,
-        value: interpretation.metric === "profit"
+        value: interpretation.metric === "profit_margin"
           ? parseFloat((item.revenueSum > 0 ? (item.metricSum / item.revenueSum) * 100 : 0).toFixed(2))
           : parseFloat(item.metricSum.toFixed(2)),
       }));
@@ -350,8 +364,10 @@ export async function registerRoutes(
         const { currentKeys: rcCurKeys, previousKeys: rcPrevKeys } =
           resolveCausalPeriods(interpretation.timeRange);
 
-        const rcMk = interpretation.metric as "revenue" | "cost" | "profit";
-        const rcIsProfit = rcMk === "profit";
+        // profit_margin has no DB column — map it to "profit" and compute margin in rcCalc
+        const rcDbCol = (interpretation.metric === "profit" || interpretation.metric === "profit_margin")
+          ? "profit" : interpretation.metric as "revenue" | "cost";
+        const rcIsMargin = interpretation.metric === "profit_margin";
 
         // Aggregate by category and region for both periods
         const rcCatCur  = new Map<string, { m: number; r: number }>();
@@ -368,7 +384,7 @@ export async function registerRoutes(
           const cat = skuMap.get(d.skuId)?.category || "Unknown";
           const reg = d.region || "Unknown";
           const rev = Number(d.revenue) || 0;
-          const mv  = Number(d[rcMk]) || 0;
+          const mv  = Number(d[rcDbCol as keyof typeof d]) || 0;
 
           const cm = isCur ? rcCatCur : rcCatPrev;
           if (!cm.has(cat)) cm.set(cat, { m: 0, r: 0 });
@@ -380,7 +396,7 @@ export async function registerRoutes(
         });
 
         const rcCalc = (e: { m: number; r: number }) =>
-          rcIsProfit ? (e.r > 0 ? (e.m / e.r) * 100 : 0) : e.m;
+          rcIsMargin ? (e.r > 0 ? (e.m / e.r) * 100 : 0) : e.m;
 
         const rcPctChange = (cur: number, prev: number) =>
           prev !== 0 ? ((cur - prev) / Math.abs(prev)) * 100 : 0;
@@ -434,8 +450,10 @@ export async function registerRoutes(
       const ctPrev    = new Map<string, { m: number; r: number }>();
       const ctRegCur  = new Map<string, { m: number; r: number }>();
       const ctRegPrev = new Map<string, { m: number; r: number }>();
-      const mk2 = interpretation.metric as "revenue" | "cost" | "profit";
-      const isP2 = interpretation.metric === "profit";
+      // profit_margin has no DB column — read from "profit", compute margin in calcDisplay
+      const mk2 = (interpretation.metric === "profit" || interpretation.metric === "profit_margin")
+        ? "profit" : interpretation.metric as "revenue" | "cost";
+      const isP2 = interpretation.metric === "profit_margin";
 
       // For causal: use the already-resolved period keys
       let curKeys2: string[] = [];
@@ -630,7 +648,8 @@ Write 2–3 short sentences identifying the main drivers of this change. Referen
         if (!regionMap.has(region)) regionMap.set(region, { metricSum: 0, revenueSum: 0, count: 0 });
 
         const entry = regionMap.get(region)!;
-        const metricKey = interpretation.metric as "revenue" | "cost" | "profit";
+        const metricKey = (interpretation.metric === "profit" || interpretation.metric === "profit_margin")
+          ? "profit" : interpretation.metric as "revenue" | "cost";
         entry.metricSum += Number(d[metricKey]) || 0;
         entry.revenueSum += Number(d.revenue) || 0;
         entry.count += 1;
@@ -638,7 +657,7 @@ Write 2–3 short sentences identifying the main drivers of this change. Referen
 
       const regions = Array.from(regionSet).sort();
       const categories = Array.from(crossMap.keys()).sort();
-      const isProfit = interpretation.metric === "profit";
+      const isProfit = interpretation.metric === "profit_margin";
 
       const crossTableRows = categories.map(category => {
         const regionMap = crossMap.get(category)!;
@@ -760,8 +779,10 @@ Write 2–3 short sentences identifying the main drivers of this change. Referen
         type PE = { metricSum: number; revenueSum: number };
         const causalMap = new Map<string, { cur: Map<string, PE>; prev: Map<string, PE> }>();
         const causalRegions = new Set<string>();
-        const mk = interpretation.metric as 'revenue' | 'cost' | 'profit';
-        const causalIsProfit = mk === 'profit';
+        // profit_margin has no DB column — read from "profit", display as margin in calcVal
+        const mk = (interpretation.metric === 'profit' || interpretation.metric === 'profit_margin')
+          ? 'profit' : interpretation.metric as 'revenue' | 'cost';
+        const causalIsMargin = interpretation.metric === 'profit_margin';
 
         allData.forEach(d => {
           const dk = new Date(d.date).toISOString().slice(0, 7);
@@ -783,9 +804,9 @@ Write 2–3 short sentences identifying the main drivers of this change. Referen
 
         const calcVal = (e: PE | undefined) => {
           if (!e) return 0;
-          return causalIsProfit ? (e.revenueSum > 0 ? (e.metricSum / e.revenueSum) * 100 : 0) : e.metricSum;
+          return causalIsMargin ? (e.revenueSum > 0 ? (e.metricSum / e.revenueSum) * 100 : 0) : e.metricSum;
         };
-        const fmt = (v: number) => parseFloat(v.toFixed(causalIsProfit ? 1 : 2));
+        const fmt = (v: number) => parseFloat(v.toFixed(causalIsMargin ? 1 : 2));
 
         const cRegions = Array.from(causalRegions).sort();
         const cCats = Array.from(causalMap.keys()).sort();
@@ -800,8 +821,8 @@ Write 2–3 short sentences identifying the main drivers of this change. Referen
             if (ce) { cm += ce.metricSum; cr += ce.revenueSum; }
             if (pe) { pm += pe.metricSum; pr += pe.revenueSum; }
           });
-          const crt = fmt(causalIsProfit ? (cr > 0 ? (cm / cr) * 100 : 0) : cm);
-          const prt = fmt(causalIsProfit ? (pr > 0 ? (pm / pr) * 100 : 0) : pm);
+          const crt = fmt(causalIsMargin ? (cr > 0 ? (cm / cr) * 100 : 0) : cm);
+          const prt = fmt(causalIsMargin ? (pr > 0 ? (pm / pr) * 100 : 0) : pm);
           return { category: cat, currentValues: cv, previousValues: pv, currentRowTotal: crt, previousRowTotal: prt };
         });
 
@@ -815,13 +836,13 @@ Write 2–3 short sentences identifying the main drivers of this change. Referen
             if (ce) { cm += ce.metricSum; cr += ce.revenueSum; }
             if (pe) { pm += pe.metricSum; pr += pe.revenueSum; }
           });
-          curColTotals[r] = fmt(causalIsProfit ? (cr > 0 ? (cm / cr) * 100 : 0) : cm);
-          prevColTotals[r] = fmt(causalIsProfit ? (pr > 0 ? (pm / pr) * 100 : 0) : pm);
+          curColTotals[r] = fmt(causalIsMargin ? (cr > 0 ? (cm / cr) * 100 : 0) : cm);
+          prevColTotals[r] = fmt(causalIsMargin ? (pr > 0 ? (pm / pr) * 100 : 0) : pm);
           cgm += cm; cgr += cr; pgm += pm; pgr += pr;
         });
 
-        const curGrandTotal = fmt(causalIsProfit ? (cgr > 0 ? (cgm / cgr) * 100 : 0) : cgm);
-        const prevGrandTotal = fmt(causalIsProfit ? (pgr > 0 ? (pgm / pgr) * 100 : 0) : pgm);
+        const curGrandTotal = fmt(causalIsMargin ? (cgr > 0 ? (cgm / cgr) * 100 : 0) : cgm);
+        const prevGrandTotal = fmt(causalIsMargin ? (pgr > 0 ? (pgm / pgr) * 100 : 0) : pgm);
 
         causalCrossTableData = {
           currentLabel, previousLabel,
@@ -862,7 +883,7 @@ Write 2–3 short sentences identifying the main drivers of this change. Referen
   app.post('/api/drilldown', async (req, res) => {
     try {
       const schema = z.object({
-        metric: z.enum(["revenue", "cost", "profit"]),
+        metric: z.enum(["revenue", "cost", "profit", "profit_margin"]),
         timeRange: z.string().optional(),
         parentDimension: z.enum(["category", "subcategory", "material", "region"]),
         parentValue: z.string(),
@@ -974,14 +995,14 @@ Write 2–3 short sentences identifying the main drivers of this change. Referen
 
         if (!aggregateMap.has(drillKey)) aggregateMap.set(drillKey, { metricSum: 0, revenueSum: 0 });
         const entry = aggregateMap.get(drillKey)!;
-        entry.metricSum += input.metric === "profit" ? profit : input.metric === "cost" ? cost : revenue;
+        entry.metricSum += (input.metric === "profit" || input.metric === "profit_margin") ? profit : input.metric === "cost" ? cost : revenue;
         entry.revenueSum += revenue;
       });
 
-      // Revenue/cost: total sum. Profit margin: weighted average.
+      // Revenue/cost/profit: total sum. Profit margin: weighted average.
       const drillDownData = Array.from(aggregateMap.entries()).map(([name, { metricSum, revenueSum }]) => ({
         name,
-        value: input.metric === "profit"
+        value: input.metric === "profit_margin"
           ? parseFloat((revenueSum > 0 ? (metricSum / revenueSum) * 100 : 0).toFixed(2))
           : parseFloat(metricSum.toFixed(2)),
       })).sort((a, b) => b.value - a.value);
