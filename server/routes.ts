@@ -69,6 +69,11 @@ export async function registerRoutes(
       // Check if query asks for "highest" to identify specific dimension request
       const isHighestQuery = query.toLowerCase().includes("highest") || query.toLowerCase().includes("top");
       
+      // Force "trend" intent for highest/top queries (they are factual, not causal)
+      if (isHighestQuery) {
+        interpretation.intent = "trend";
+      }
+      
       let topCategory: string | null = null;
       
       // Aggregate by month for trend - will be filtered if topCategory is identified
@@ -94,11 +99,42 @@ export async function registerRoutes(
         }
       }
 
+      // Helper function to determine if a date matches the requested time range
+      const dateMatchesTimeRange = (dateStr: string, timeRange: string | null): boolean => {
+        if (!timeRange) return true;
+        const month = dateStr.slice(5, 7); // Extract month from YYYY-MM
+        const lowerTimeRange = timeRange.toLowerCase();
+        
+        if (lowerTimeRange.includes("q1")) return ["01", "02", "03"].includes(month);
+        if (lowerTimeRange.includes("q2")) return ["04", "05", "06"].includes(month);
+        if (lowerTimeRange.includes("q3")) return ["07", "08", "09"].includes(month);
+        if (lowerTimeRange.includes("q4")) return ["10", "11", "12"].includes(month);
+        
+        // If specific month mentioned, match it
+        if (lowerTimeRange.includes("january") || lowerTimeRange.includes("jan")) return month === "01";
+        if (lowerTimeRange.includes("february") || lowerTimeRange.includes("feb")) return month === "02";
+        if (lowerTimeRange.includes("march") || lowerTimeRange.includes("mar")) return month === "03";
+        if (lowerTimeRange.includes("april") || lowerTimeRange.includes("apr")) return month === "04";
+        if (lowerTimeRange.includes("may")) return month === "05";
+        if (lowerTimeRange.includes("june") || lowerTimeRange.includes("jun")) return month === "06";
+        if (lowerTimeRange.includes("july") || lowerTimeRange.includes("jul")) return month === "07";
+        if (lowerTimeRange.includes("august") || lowerTimeRange.includes("aug")) return month === "08";
+        if (lowerTimeRange.includes("september") || lowerTimeRange.includes("sep")) return month === "09";
+        if (lowerTimeRange.includes("october") || lowerTimeRange.includes("oct")) return month === "10";
+        if (lowerTimeRange.includes("november") || lowerTimeRange.includes("nov")) return month === "11";
+        if (lowerTimeRange.includes("december") || lowerTimeRange.includes("dec")) return month === "12";
+        
+        return true; // Default to all if no time range matched
+      };
+      
       // If asking for profit margin, calculate it per category
       if (interpretation.metric === "profit" && isHighestQuery) {
-        // Calculate average profit margin by category
+        // Calculate average profit margin by category (filtered by time range)
         const marginByCategory = new Map<string, { total: number; count: number }>();
         allData.forEach(d => {
+          const dateStr = new Date(d.date).toISOString().slice(0, 7);
+          if (!dateMatchesTimeRange(dateStr, interpretation.timeRange)) return;
+          
           const hierarchy = skuMap.get(d.skuId);
           const categoryName = hierarchy?.category || "Unknown";
           const revenue = Number(d.revenue) || 0;
@@ -124,15 +160,19 @@ export async function registerRoutes(
         }
       }
       
-      // Aggregate trend - filter by topCategory if identified
+      // Aggregate trend - filter by topCategory and time range if applicable
       allData.forEach(d => {
+        const dateKey = new Date(d.date).toISOString().slice(0, 7); // YYYY-MM
+        
+        // Filter by time range if specified
+        if (interpretation.timeRange && !dateMatchesTimeRange(dateKey, interpretation.timeRange)) return;
+        
         // If topCategory is set, only include that category's data
         if (topCategory) {
           const hierarchy = skuMap.get(d.skuId);
           if (hierarchy?.category !== topCategory) return;
         }
         
-        const dateKey = new Date(d.date).toISOString().slice(0, 7); // YYYY-MM
         if (!trendMap.has(dateKey)) {
           trendMap.set(dateKey, { date: dateKey, value: 0, count: 0 });
         }

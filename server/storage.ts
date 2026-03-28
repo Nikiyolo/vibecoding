@@ -115,6 +115,8 @@ export class DatabaseStorage implements IStorage {
   
   async seedMetrics() {
     await this.seedProductHierarchy();
+    // Clear existing metrics to reseed with new data
+    await db.delete(performanceMetrics);
     const existing = await this.getMetrics();
     if (existing.length > 0) return;
     
@@ -137,7 +139,24 @@ export class DatabaseStorage implements IStorage {
           const regionMultiplier = region === "Europe" ? 0.85 : (region === "Asia" ? 1.0 : 1.15);
           
           const revenue = Math.max(100, (baseRevenue + variance) * skuMultiplier * regionMultiplier);
-          const cost = revenue * 0.6;
+          
+          // Variable cost ratio by SKU to create different profit margins
+          // Electronics: 45% cost = 55% margin
+          // Furniture: 55% cost = 45% margin  
+          // Software: 35% cost = 65% margin
+          let costRatio = 0.55; // default
+          if (sku.sku.includes("CHAIR") || sku.sku.includes("DESK") || sku.sku.includes("CUSH")) {
+            costRatio = 0.55; // Furniture: 45% margin
+          } else if (sku.sku.includes("OFFICE") || sku.sku.includes("IDE") || sku.sku.includes("PM") || sku.sku.includes("VCS")) {
+            costRatio = 0.35; // Software: 65% margin
+          } else {
+            costRatio = 0.45; // Electronics: 55% margin
+          }
+          
+          // Add variation by month (margins decline over time)
+          costRatio += (i * 0.01); // Cost increases 1% per month
+          
+          const cost = revenue * costRatio;
           const profit = revenue - cost;
           
           await this.createMetric({
