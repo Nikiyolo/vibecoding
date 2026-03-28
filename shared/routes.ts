@@ -35,7 +35,17 @@ export const api = {
             timeRange: z.string(),
             intent: z.string(),
           }),
-          trendData: z.array(z.any()), // flexible array for charts
+          trendData: z.array(z.any()),
+          crossTableData: z.object({
+            regions: z.array(z.string()),
+            rows: z.array(z.object({
+              category: z.string(),
+              values: z.record(z.string(), z.number()),
+              rowTotal: z.number(),
+            })),
+            columnTotals: z.record(z.string(), z.number()),
+            grandTotal: z.number(),
+          }).optional(),
           breakdownData: z.array(z.any()),
           rootCauses: z.array(z.object({
             dimension: z.string(),
@@ -45,6 +55,7 @@ export const api = {
           trendDescription: z.string(),
           rootCausesDescription: z.string(),
           suggestions: z.string(),
+          topCategory: z.string().nullable().optional(),
         }),
         400: errorSchemas.validation,
         500: errorSchemas.internal,

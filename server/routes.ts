@@ -472,9 +472,87 @@ export async function registerRoutes(
       const rootCausesDescription = causesResponse.choices[0]?.message?.content || "Unable to generate root causes analysis.";
       const suggestions = suggestionsResponse.choices[0]?.message?.content || "Unable to generate suggestions.";
 
+      // Build cross-table: category (rows) × region (columns)
+      const crossMap = new Map<string, Map<string, { metricSum: number; revenueSum: number; count: number }>>();
+      const regionSet = new Set<string>();
+
+      allData.forEach(d => {
+        const dateKey = new Date(d.date).toISOString().slice(0, 7);
+        if (interpretation.timeRange && !dateMatchesTimeRange(dateKey, interpretation.timeRange)) return;
+
+        const hierarchy = skuMap.get(d.skuId);
+        const category = hierarchy?.category || "Unknown";
+        const region = d.region || "Unknown";
+        regionSet.add(region);
+
+        if (!crossMap.has(category)) crossMap.set(category, new Map());
+        const regionMap = crossMap.get(category)!;
+        if (!regionMap.has(region)) regionMap.set(region, { metricSum: 0, revenueSum: 0, count: 0 });
+
+        const entry = regionMap.get(region)!;
+        const metricKey = interpretation.metric as "revenue" | "cost" | "profit";
+        entry.metricSum += Number(d[metricKey]) || 0;
+        entry.revenueSum += Number(d.revenue) || 0;
+        entry.count += 1;
+      });
+
+      const regions = Array.from(regionSet).sort();
+      const categories = Array.from(crossMap.keys()).sort();
+      const isProfit = interpretation.metric === "profit";
+
+      const crossTableRows = categories.map(category => {
+        const regionMap = crossMap.get(category)!;
+        const values: Record<string, number> = {};
+        let rowTotal = 0;
+        let rowRevenue = 0;
+
+        regions.forEach(region => {
+          const entry = regionMap.get(region);
+          if (entry) {
+            const val = isProfit
+              ? (entry.revenueSum > 0 ? (entry.metricSum / entry.revenueSum) * 100 : 0)
+              : entry.metricSum;
+            values[region] = parseFloat(val.toFixed(isProfit ? 1 : 2));
+            rowTotal += entry.metricSum;
+            rowRevenue += entry.revenueSum;
+          } else {
+            values[region] = 0;
+          }
+        });
+
+        const rowDisplayTotal = isProfit
+          ? parseFloat((rowRevenue > 0 ? (rowTotal / rowRevenue) * 100 : 0).toFixed(1))
+          : parseFloat(rowTotal.toFixed(2));
+
+        return { category, values, rowTotal: rowDisplayTotal };
+      });
+
+      const columnTotals: Record<string, number> = {};
+      const colRawMap = new Map<string, { metricSum: number; revenueSum: number }>();
+      regions.forEach(region => {
+        let metricSum = 0; let revenueSum = 0;
+        crossMap.forEach(regionMap => {
+          const e = regionMap.get(region);
+          if (e) { metricSum += e.metricSum; revenueSum += e.revenueSum; }
+        });
+        colRawMap.set(region, { metricSum, revenueSum });
+        columnTotals[region] = isProfit
+          ? parseFloat((revenueSum > 0 ? (metricSum / revenueSum) * 100 : 0).toFixed(1))
+          : parseFloat(metricSum.toFixed(2));
+      });
+
+      let grandTotalMetric = 0; let grandTotalRevenue = 0;
+      colRawMap.forEach(v => { grandTotalMetric += v.metricSum; grandTotalRevenue += v.revenueSum; });
+      const grandTotal = isProfit
+        ? parseFloat((grandTotalRevenue > 0 ? (grandTotalMetric / grandTotalRevenue) * 100 : 0).toFixed(1))
+        : parseFloat(grandTotalMetric.toFixed(2));
+
+      const crossTableData = { regions, rows: crossTableRows, columnTotals, grandTotal };
+
       res.json({
         interpretation,
         trendData,
+        crossTableData,
         breakdownData: !isHighestQuery ? breakdownData : [],
         rootCauses,
         trendDescription,

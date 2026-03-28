@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, ArrowRight, BarChart3, Search, Lightbulb, AlertTriangle, TrendingDown, TrendingUp, HelpCircle } from "lucide-react";
 import { useAnalyzeQuery } from "../hooks/use-analyze";
-import { TrendChart, BreakdownChart } from "../components/MetricCharts";
+import { BreakdownChart } from "../components/MetricCharts";
+import { CrossTable } from "../components/CrossTable";
 import { DrillDownPanel } from "../components/DrillDownPanel";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -285,30 +286,32 @@ export default function Home() {
                       </div>
                     )}
                     <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                      <h3 className="text-lg font-bold mb-6 text-foreground">
-                        {displayMetric} Trend
-                        {isHighestQuery && topCategory && ` - ${topCategory}`}
+                      <h3 className="text-lg font-bold mb-2 text-foreground">
+                        {displayMetric} — Product × Region
+                        {isHighestQuery && topCategory && ` (Top: ${topCategory})`}
                       </h3>
-                      <TrendChart 
-                        data={analyzeMutation.data.trendData} 
-                        title="" 
+                      <p className="text-xs text-muted-foreground mb-5">Aggregated {displayMetric.toLowerCase()} by product category and sales region</p>
+                      <CrossTable 
+                        data={(analyzeMutation.data as any).crossTableData}
+                        metric={analyzeMutation.data.interpretation.metric}
                       />
                     </div>
                   </div>
                 );
               }
 
-              // Layout 2: Factual with Dimension Breakdown - Trend + Breakdown
+              // Layout 2: Factual with Dimension Breakdown - Cross Table + Breakdown
               if (!isCausalQuery && hasBreakdown) {
                 return (
                   <div className="flex flex-col gap-6 w-full">
                     <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                      <h3 className="text-lg font-bold mb-6 text-foreground">
-                        {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} Trend
+                      <h3 className="text-lg font-bold mb-2 text-foreground">
+                        {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Product × Region
                       </h3>
-                      <TrendChart 
-                        data={analyzeMutation.data.trendData} 
-                        title="" 
+                      <p className="text-xs text-muted-foreground mb-5">Aggregated by product category and sales region</p>
+                      <CrossTable 
+                        data={(analyzeMutation.data as any).crossTableData}
+                        metric={analyzeMutation.data.interpretation.metric}
                       />
                     </div>
 
@@ -419,14 +422,15 @@ export default function Home() {
 
                     {/* Main Content - Charts & Drill-down */}
                     <div className="lg:col-span-3 flex flex-col gap-6">
-                      {/* Trend Chart */}
+                      {/* Cross Table */}
                       <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                        <h3 className="text-lg font-bold mb-6 text-foreground">
-                          {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} Trend
+                        <h3 className="text-lg font-bold mb-2 text-foreground">
+                          {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Product × Region
                         </h3>
-                        <TrendChart 
-                          data={analyzeMutation.data.trendData} 
-                          title="" 
+                        <p className="text-xs text-muted-foreground mb-5">Aggregated by product category and sales region</p>
+                        <CrossTable 
+                          data={(analyzeMutation.data as any).crossTableData}
+                          metric={analyzeMutation.data.interpretation.metric}
                         />
                       </div>
 
