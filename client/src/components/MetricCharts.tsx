@@ -48,6 +48,21 @@ export function TrendChart({ data, title }: ChartProps) {
     [y]: Number(item[y as keyof typeof item]) || 0
   }));
 
+  // Check if this is multi-series data (multiple value columns besides the x-axis)
+  const dataKeys = Object.keys(processedData[0]);
+  const valueKeys = dataKeys.filter(key => key !== x && typeof processedData[0][key] === 'number');
+  const isMultiSeries = valueKeys.length > 1;
+  
+  // Define color palette for multi-series
+  const colorPalette = [
+    'hsl(var(--primary))',
+    'hsl(220 90% 60%)',      // Blue variant
+    'hsl(142 71% 45%)',      // Green
+    'hsl(0 84% 60%)',        // Red
+    'hsl(38 92% 50%)',       // Orange
+    'hsl(280 85% 55%)',      // Purple
+  ];
+
   return (
     <div className="w-full flex flex-col h-full">
       {title && <h3 className="text-lg font-semibold mb-6">{title}</h3>}
@@ -74,6 +89,8 @@ export function TrendChart({ data, title }: ChartProps) {
               tickFormatter={(value) => {
                 if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
                 if (value >= 1000) return `$${(value / 1000).toFixed(0)}k`;
+                // For percentages (profit margin), don't add $
+                if (value < 100 && value > 0) return `${value.toFixed(0)}%`;
                 return `$${value}`;
               }}
               width={60}
@@ -91,19 +108,41 @@ export function TrendChart({ data, title }: ChartProps) {
                 const num = Number(value) || 0;
                 if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
                 if (num >= 1000) return `$${(num / 1000).toFixed(1)}k`;
+                // For percentages, check if it looks like a percentage
+                if (num < 100 && num > 0) return `${num.toFixed(1)}%`;
                 return `$${num.toFixed(2)}`;
               }}
             />
-            <Line 
-              type="linear" 
-              dataKey={y} 
-              stroke="hsl(var(--primary))" 
-              strokeWidth={3}
-              dot={{ r: 5, fill: "hsl(var(--primary))", strokeWidth: 0 }}
-              activeDot={{ r: 7, stroke: "hsl(var(--background))", strokeWidth: 2 }}
-              animationDuration={1500}
-              isAnimationActive={true}
-            />
+            {isMultiSeries ? (
+              <>
+                <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                {valueKeys.map((key, index) => (
+                  <Line 
+                    key={key}
+                    type="linear" 
+                    dataKey={key} 
+                    stroke={colorPalette[index % colorPalette.length]} 
+                    strokeWidth={3}
+                    dot={{ r: 5, fill: colorPalette[index % colorPalette.length], strokeWidth: 0 }}
+                    activeDot={{ r: 7, stroke: "hsl(var(--background))", strokeWidth: 2 }}
+                    animationDuration={1500}
+                    isAnimationActive={true}
+                    name={key}
+                  />
+                ))}
+              </>
+            ) : (
+              <Line 
+                type="linear" 
+                dataKey={y} 
+                stroke="hsl(var(--primary))" 
+                strokeWidth={3}
+                dot={{ r: 5, fill: "hsl(var(--primary))", strokeWidth: 0 }}
+                activeDot={{ r: 7, stroke: "hsl(var(--background))", strokeWidth: 2 }}
+                animationDuration={1500}
+                isAnimationActive={true}
+              />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>

@@ -160,43 +160,84 @@ export async function registerRoutes(
         }
       }
       
-      // Aggregate trend - filter by topCategory and time range if applicable
-      allData.forEach(d => {
-        const dateKey = new Date(d.date).toISOString().slice(0, 7); // YYYY-MM
+      // For highest queries, aggregate trend data by category (multi-series)
+      // Otherwise, aggregate as a single trend line
+      let trendData: any[] = [];
+      
+      if (isHighestQuery && interpretation.metric === "profit") {
+        // Build multi-series data by category
+        const categoryTrendMap = new Map<string, Map<string, { value: number; count: number }>>();
         
-        // Filter by time range if specified
-        if (interpretation.timeRange && !dateMatchesTimeRange(dateKey, interpretation.timeRange)) return;
-        
-        // If topCategory is set, only include that category's data
-        if (topCategory) {
+        allData.forEach(d => {
+          const dateKey = new Date(d.date).toISOString().slice(0, 7);
+          if (interpretation.timeRange && !dateMatchesTimeRange(dateKey, interpretation.timeRange)) return;
+          
           const hierarchy = skuMap.get(d.skuId);
-          if (hierarchy?.category !== topCategory) return;
-        }
-        
-        if (!trendMap.has(dateKey)) {
-          trendMap.set(dateKey, { date: dateKey, value: 0, count: 0 });
-        }
-        const entry = trendMap.get(dateKey)!;
-        
-        // Calculate profit margin if metric is profit
-        if (interpretation.metric === "profit") {
+          const categoryName = hierarchy?.category || "Unknown";
           const revenue = Number(d.revenue) || 0;
           const profit = Number(d.profit) || 0;
           const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
+          
+          if (!categoryTrendMap.has(categoryName)) {
+            categoryTrendMap.set(categoryName, new Map());
+          }
+          const catMap = categoryTrendMap.get(categoryName)!;
+          if (!catMap.has(dateKey)) {
+            catMap.set(dateKey, { value: 0, count: 0 });
+          }
+          const entry = catMap.get(dateKey)!;
           entry.value += profitMargin;
-        } else {
-          entry.value += Number(d[interpretation.metric as keyof typeof d] || 0);
-        }
-        entry.count += 1;
-      });
-      
-      // Average the values
-      const trendData = Array.from(trendMap.values()).map(item => ({
-        date: item.date,
-        value: interpretation.metric === "profit" && item.count > 0 
-          ? parseFloat((item.value / item.count).toFixed(2))
-          : item.value
-      })).sort((a, b) => a.date.localeCompare(b.date));
+          entry.count += 1;
+        });
+        
+        // Format as multi-series data: [{date, Category1: 55, Category2: 45, ...}, ...]
+        const dateSet = new Set<string>();
+        categoryTrendMap.forEach(catMap => {
+          catMap.forEach((_, dateKey) => dateSet.add(dateKey));
+        });
+        
+        const dates = Array.from(dateSet).sort();
+        trendData = dates.map(dateKey => {
+          const row: any = { date: dateKey };
+          categoryTrendMap.forEach((catMap, categoryName) => {
+            const entry = catMap.get(dateKey);
+            row[categoryName] = entry ? parseFloat((entry.value / entry.count).toFixed(2)) : 0;
+          });
+          return row;
+        });
+      } else {
+        // Single series trend data
+        allData.forEach(d => {
+          const dateKey = new Date(d.date).toISOString().slice(0, 7); // YYYY-MM
+          
+          // Filter by time range if specified
+          if (interpretation.timeRange && !dateMatchesTimeRange(dateKey, interpretation.timeRange)) return;
+          
+          if (!trendMap.has(dateKey)) {
+            trendMap.set(dateKey, { date: dateKey, value: 0, count: 0 });
+          }
+          const entry = trendMap.get(dateKey)!;
+          
+          // Calculate profit margin if metric is profit
+          if (interpretation.metric === "profit") {
+            const revenue = Number(d.revenue) || 0;
+            const profit = Number(d.profit) || 0;
+            const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
+            entry.value += profitMargin;
+          } else {
+            entry.value += Number(d[interpretation.metric as keyof typeof d] || 0);
+          }
+          entry.count += 1;
+        });
+        
+        // Average the values
+        trendData = Array.from(trendMap.values()).map(item => ({
+          date: item.date,
+          value: interpretation.metric === "profit" && item.count > 0 
+            ? parseFloat((item.value / item.count).toFixed(2))
+            : item.value
+        })).sort((a, b) => a.date.localeCompare(b.date));
+      }
       
       // Aggregate profit margin by category (only if not a highest query)
       const breakdownMap = new Map();
