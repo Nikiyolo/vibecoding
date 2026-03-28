@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -157,6 +157,8 @@ export function TrendChart({ data, title }: ChartProps) {
 }
 
 export function BreakdownChart({ data, title, onBarRightClick }: BreakdownChartProps) {
+  const hoveredBarRef = useRef<{ name: string; clientX: number; clientY: number } | null>(null);
+
   if (!data || data.length === 0) {
     return <div className="h-64 flex items-center justify-center text-muted-foreground">No breakdown data available</div>;
   }
@@ -185,9 +187,18 @@ export function BreakdownChart({ data, title, onBarRightClick }: BreakdownChartP
     <div className="w-full flex flex-col h-full">
       {title && <h3 className="text-lg font-semibold mb-6">{title}</h3>}
       {onBarRightClick && (
-        <p className="text-xs text-muted-foreground mb-3 italic">Click on a bar to drill down into its details</p>
+        <p className="text-xs text-muted-foreground mb-3 italic">Click or right-click a bar to drill down</p>
       )}
-      <div className="flex-1 min-h-[300px] w-full">
+      <div
+        className="flex-1 min-h-[300px] w-full"
+        onContextMenu={(e) => {
+          if (!onBarRightClick) return;
+          e.preventDefault();
+          if (hoveredBarRef.current) {
+            onBarRightClick(hoveredBarRef.current.name, e.clientX, e.clientY);
+          }
+        }}
+      >
         <ResponsiveContainer width="100%" height={300}>
           <BarChart 
             data={processedData}
@@ -239,6 +250,17 @@ export function BreakdownChart({ data, title, onBarRightClick }: BreakdownChartP
               dataKey={y}
               radius={[0, 8, 8, 0]}
               animationDuration={1500}
+              onMouseEnter={(data: any, _: number, e: any) => {
+                if (data) hoveredBarRef.current = { name: data[x], clientX: e?.clientX || 0, clientY: e?.clientY || 0 };
+              }}
+              onMouseLeave={() => { hoveredBarRef.current = null; }}
+              onContextMenu={(data: any, _: number, e: any) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (onBarRightClick && data) {
+                  onBarRightClick(data[x], e.clientX, e.clientY);
+                }
+              }}
               onClick={(data: any, _: number, e: any) => {
                 if (onBarRightClick && data) {
                   const rect = (e.currentTarget as SVGElement)?.getBoundingClientRect?.();
