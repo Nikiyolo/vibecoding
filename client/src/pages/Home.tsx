@@ -354,61 +354,81 @@ export default function Home() {
                 );
               }
 
-              // Layout 3: Causal Query - Full dashboard with sidebar
+              // Layout 3: Causal Query - Stacked vertical layout
               if (isCausalQuery) {
                 return (
-                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    {/* Left Sidebar - Analysis Summary & Suggestions */}
-                    <div className="lg:col-span-1 flex flex-col gap-4">
-                      
-                      {/* Analysis Summary */}
-                      <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-2xl p-5">
-                        <div className="flex items-center gap-2 mb-3">
-                          <TrendingDown className="w-5 h-5 text-purple-600" />
-                          <h3 className="font-bold text-sm text-foreground">Analysis Summary</h3>
-                        </div>
-                        <p className="text-xs leading-relaxed text-foreground/85 mb-3">
-                          {analyzeMutation.data.trendDescription}
-                        </p>
-                        {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
-                          <div className="pt-3 border-t border-purple-200">
-                            <p className="text-xs font-semibold text-purple-600 uppercase mb-2">Key Impact Factors:</p>
-                            {analyzeMutation.data.rootCauses.map((cause, idx) => (
-                              <div key={idx} className="text-xs text-foreground/75">
-                                <span className="font-medium">{cause.topContributor}</span>
-                                <span className="text-red-600 font-bold ml-1">({cause.dimension})</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                  <div className="flex flex-col gap-6">
 
-                      {/* Root Causes Detailed */}
-                      {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
-                        <div className="bg-white border border-orange-200 rounded-2xl p-5">
-                          <div className="flex items-center gap-2 mb-3">
-                            <AlertTriangle className="w-5 h-5 text-orange-600" />
-                            <h3 className="font-bold text-sm text-foreground">Root Causes</h3>
-                          </div>
+                    {/* Row 1: Analysis Summary (full width) */}
+                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-2xl p-5" data-testid="section-analysis-summary">
+                      <div className="flex items-center gap-2 mb-3">
+                        <TrendingDown className="w-5 h-5 text-purple-600" />
+                        <h3 className="font-bold text-sm text-foreground">Analysis Summary</h3>
+                      </div>
+                      <p className="text-sm leading-relaxed text-foreground/85">
+                        {analyzeMutation.data.trendDescription}
+                      </p>
+                    </div>
+
+                    {/* Row 2: Cross Table (full width) */}
+                    <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                      {(analyzeMutation.data as any).causalCrossTableData ? (
+                        <>
+                          <h3 className="text-lg font-bold mb-2 text-foreground">
+                            {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Period Comparison by Region
+                          </h3>
+                          <p className="text-xs text-muted-foreground mb-5">
+                            Current vs prior period, broken down by product category and sales region
+                          </p>
+                          <CausalCrossTable
+                            data={(analyzeMutation.data as any).causalCrossTableData}
+                            metric={analyzeMutation.data.interpretation.metric}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <h3 className="text-lg font-bold mb-2 text-foreground">
+                            {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Product × Region
+                          </h3>
+                          <p className="text-xs text-muted-foreground mb-5">Aggregated by product category and sales region</p>
+                          <CrossTable
+                            data={(analyzeMutation.data as any).crossTableData}
+                            metric={analyzeMutation.data.interpretation.metric}
+                          />
+                        </>
+                      )}
+                    </div>
+
+                    {/* Row 3: Root Causes + Recommendations side-by-side */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Root Causes */}
+                      <div className="bg-white border border-orange-200 rounded-2xl p-5" data-testid="section-root-causes">
+                        <div className="flex items-center gap-2 mb-3">
+                          <AlertTriangle className="w-5 h-5 text-orange-600" />
+                          <h3 className="font-bold text-sm text-foreground">Root Causes</h3>
+                        </div>
+                        {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
                           <div className="space-y-2 mb-3">
                             {analyzeMutation.data.rootCauses.map((cause, idx) => (
-                              <div key={idx} className="pb-2 border-b border-gray-200 last:border-b-0 last:pb-0">
+                              <div key={idx} className="pb-2 border-b border-gray-100 last:border-b-0 last:pb-0">
                                 <p className="text-xs font-semibold text-gray-500 uppercase">{cause.dimension}</p>
                                 <div className="flex items-center justify-between mt-1">
                                   <p className="text-xs font-medium text-foreground">{cause.topContributor}</p>
-                                  <span className="text-xs font-bold text-red-600">-{Math.abs(cause.changePercentage)}%</span>
+                                  <span className={`text-xs font-bold ${cause.changePercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {cause.changePercentage >= 0 ? '+' : ''}{cause.changePercentage}%
+                                  </span>
                                 </div>
                               </div>
                             ))}
                           </div>
-                          <p className="text-xs leading-relaxed text-foreground/85 border-t border-gray-200 pt-3">
-                            {analyzeMutation.data.rootCausesDescription}
-                          </p>
-                        </div>
-                      )}
+                        )}
+                        <p className="text-xs leading-relaxed text-foreground/85 border-t border-gray-100 pt-3">
+                          {analyzeMutation.data.rootCausesDescription}
+                        </p>
+                      </div>
 
-                      {/* Actionable Suggestions */}
-                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-5">
+                      {/* Recommendations */}
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-5" data-testid="section-recommendations">
                         <div className="flex items-center gap-2 mb-3">
                           <Lightbulb className="w-5 h-5 text-green-600" />
                           <h3 className="font-bold text-sm text-foreground">Recommendations</h3>
@@ -421,78 +441,46 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Main Content - Charts & Drill-down */}
-                    <div className="lg:col-span-3 flex flex-col gap-6">
-                      {/* Time-Comparison Cross Table (causal) */}
-                      <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                        {(analyzeMutation.data as any).causalCrossTableData ? (
-                          <>
-                            <h3 className="text-lg font-bold mb-2 text-foreground">
-                              {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Period Comparison by Region
-                            </h3>
-                            <p className="text-xs text-muted-foreground mb-5">
-                              Current vs prior period, broken down by product category and sales region
-                            </p>
-                            <CausalCrossTable
-                              data={(analyzeMutation.data as any).causalCrossTableData}
-                              metric={analyzeMutation.data.interpretation.metric}
-                            />
-                          </>
-                        ) : (
-                          <>
-                            <h3 className="text-lg font-bold mb-2 text-foreground">
-                              {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Product × Region
-                            </h3>
-                            <p className="text-xs text-muted-foreground mb-5">Aggregated by product category and sales region</p>
-                            <CrossTable
-                              data={(analyzeMutation.data as any).crossTableData}
-                              metric={analyzeMutation.data.interpretation.metric}
-                            />
-                          </>
-                        )}
-                      </div>
+                    {/* Row 4: Breakdown Impact Analysis + Drill-down */}
+                    {hasBreakdown && (
+                      <>
+                        <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                          <h3 className="text-lg font-bold mb-6 text-foreground">Breakdown Impact Analysis</h3>
+                          <BreakdownChart 
+                            data={analyzeMutation.data.breakdownData} 
+                            title="" 
+                            onBarRightClick={handleBarRightClick}
+                          />
+                        </div>
 
-                      {/* Breakdown Impact Analysis with Drill-down */}
-                      {hasBreakdown && (
-                        <>
-                          <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                            <h3 className="text-lg font-bold mb-6 text-foreground">Breakdown Impact Analysis</h3>
+                        {/* Drill-down loading state */}
+                        {drillMutation.isPending && (
+                          <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-center h-40">
+                            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                              <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                              <span className="text-sm">Loading drill-down data...</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Drill-down results */}
+                        {drillDownResult && !drillMutation.isPending && drillDownResult.data.length > 0 && (
+                          <div className="bg-white border border-blue-200 rounded-2xl p-6">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-lg font-bold text-foreground">Dimension Drill-Down Details</h3>
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-6">
+                              Breakdown of <strong>{drillDownResult.parentValue}</strong> by{" "}
+                              <strong className="capitalize">{drillDownResult.drillLevel}</strong>
+                            </p>
                             <BreakdownChart 
-                              data={analyzeMutation.data.breakdownData} 
+                              data={drillDownResult.data} 
                               title="" 
-                              onBarRightClick={handleBarRightClick}
                             />
                           </div>
-
-                          {/* Drill-down loading state */}
-                          {drillMutation.isPending && (
-                            <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-center h-40">
-                              <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                                <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-sm">Loading drill-down data...</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Drill-down results */}
-                          {drillDownResult && !drillMutation.isPending && drillDownResult.data.length > 0 && (
-                            <div className="bg-white border border-blue-200 rounded-2xl p-6">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h3 className="text-lg font-bold text-foreground">Dimension Drill-Down Details</h3>
-                              </div>
-                              <p className="text-sm text-muted-foreground mb-6">
-                                Breakdown of <strong>{drillDownResult.parentValue}</strong> by{" "}
-                                <strong className="capitalize">{drillDownResult.drillLevel}</strong>
-                              </p>
-                              <BreakdownChart 
-                                data={drillDownResult.data} 
-                                title="" 
-                              />
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 );
               }

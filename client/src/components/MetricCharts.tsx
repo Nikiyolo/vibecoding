@@ -282,33 +282,51 @@ export function BreakdownChart({ data, title, onBarRightClick }: BreakdownChartP
         </ResponsiveContainer>
       </div>
 
-      {/* Clickable dimension list for drill-down */}
-      {onBarRightClick && processedData.length > 0 && (
+      {/* Color legend — always shown; clickable only when drill-down is enabled */}
+      {processedData.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
-          {processedData.map((item, index) => (
-            <button
-              key={index}
-              onClick={(e) => {
-                e.stopPropagation();
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                onBarRightClick(String(item[x]), rect.right, rect.top + rect.height / 2);
-              }}
-              data-testid={`drilldown-bar-${String(item[x]).toLowerCase().replace(/\s+/g, '-')}`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105"
-              style={{ 
-                backgroundColor: colorPalette[index % colorPalette.length] + '20',
-                color: colorPalette[index % colorPalette.length],
-                border: `1px solid ${colorPalette[index % colorPalette.length]}40`
-              }}
-            >
+          {processedData.map((item, index) => {
+            const color = colorPalette[index % colorPalette.length];
+            const label = String(item[x]);
+            if (onBarRightClick) {
+              return (
+                <button
+                  key={index}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    onBarRightClick(label, rect.right, rect.top + rect.height / 2);
+                  }}
+                  data-testid={`drilldown-bar-${label.toLowerCase().replace(/\s+/g, '-')}`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105"
+                  style={{
+                    backgroundColor: color + '20',
+                    color,
+                    border: `1px solid ${color}40`,
+                  }}
+                >
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  {label}
+                  <span className="opacity-60">→</span>
+                </button>
+              );
+            }
+            return (
               <span
-                className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: colorPalette[index % colorPalette.length] }}
-              />
-              {String(item[x])}
-              <span className="opacity-60">→</span>
-            </button>
-          ))}
+                key={index}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                style={{
+                  backgroundColor: color + '15',
+                  color,
+                  border: `1px solid ${color}35`,
+                }}
+                data-testid={`legend-bar-${label.toLowerCase().replace(/\s+/g, '-')}`}
+              >
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                {label}
+              </span>
+            );
+          })}
         </div>
       )}
     </div>
