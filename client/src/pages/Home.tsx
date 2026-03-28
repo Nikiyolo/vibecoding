@@ -1,14 +1,87 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, ArrowRight, BarChart3, Search, Lightbulb, AlertTriangle, TrendingDown, TrendingUp, HelpCircle } from "lucide-react";
 import { useAnalyzeQuery } from "../hooks/use-analyze";
 import { TrendChart, BreakdownChart } from "../components/MetricCharts";
+import { DrillDownPanel } from "../components/DrillDownPanel";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+
+interface ContextMenuState {
+  barName: string;
+  x: number;
+  y: number;
+}
+
+interface DrillDownResult {
+  drillLevel: string;
+  parentValue: string;
+  data: { name: string; value: number }[];
+}
 
 export default function Home() {
   const [query, setQuery] = useState("");
   const analyzeMutation = useAnalyzeQuery();
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [drillDownResult, setDrillDownResult] = useState<DrillDownResult | null>(null);
+
+  const drillMutation = useMutation({
+    mutationFn: (body: {
+      metric: string;
+      timeRange?: string;
+      parentDimension: string;
+      parentValue: string;
+      drillLevel: string;
+    }) => apiRequest("POST", "/api/drilldown", body).then(r => r.json()),
+    onSuccess: (data, variables) => {
+      setDrillDownResult({
+        drillLevel: variables.drillLevel,
+        parentValue: variables.parentValue,
+        data: data.drillDownData,
+      });
+    }
+  });
+
+  // Determine parent dimension from current breakdown data
+  const getParentDimension = () => {
+    const data = (analyzeMutation.data as any)?.breakdownData;
+    if (!data || data.length === 0) return "category";
+    const regions = ["North America", "Europe", "Asia"];
+    if (regions.includes(data[0]?.name)) return "region";
+    return "category";
+  };
+
+  const handleBarRightClick = (barName: string, x: number, y: number) => {
+    setContextMenu({ barName, x, y });
+  };
+
+  const handleDrillLevelSelect = (drillLevel: string) => {
+    if (!contextMenu || !analyzeMutation.data) return;
+    const parentDimension = getParentDimension();
+    const metric = (analyzeMutation.data as any).interpretation?.metric || "revenue";
+    const timeRange = (analyzeMutation.data as any).interpretation?.timeRange;
+    drillMutation.mutate({
+      metric,
+      timeRange,
+      parentDimension,
+      parentValue: contextMenu.barName,
+      drillLevel,
+    });
+  };
+
+  // Close context menu on outside click
+  useEffect(() => {
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
+
+  // Reset drill-down when new query is submitted
+  useEffect(() => {
+    setDrillDownResult(null);
+  }, [analyzeMutation.data]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -244,8 +317,35 @@ export default function Home() {
                       <BreakdownChart 
                         data={analyzeMutation.data.breakdownData} 
                         title="" 
+                        onBarRightClick={handleBarRightClick}
                       />
                     </div>
+
+                    {/* Drill-down results */}
+                    {(drillMutation.isPending) && (
+                      <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-center h-40">
+                        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                          <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-sm">Loading drill-down data...</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {drillDownResult && !drillMutation.isPending && drillDownResult.data.length > 0 && (
+                      <div className="bg-white border border-blue-200 rounded-2xl p-6">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-lg font-bold text-foreground">Dimension Drill-Down Details</h3>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-6">
+                          Breakdown of <strong>{drillDownResult.parentValue}</strong> by{" "}
+                          <strong className="capitalize">{drillDownResult.drillLevel}</strong>
+                        </p>
+                        <BreakdownChart 
+                          data={drillDownResult.data} 
+                          title="" 
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -372,6 +472,18 @@ export default function Home() {
           </motion.div>
         )}
       </main>
+
+      {/* Context menu for drill-down */}
+      {contextMenu && (
+        <DrillDownPanel
+          anchorX={contextMenu.x}
+          anchorY={contextMenu.y}
+          barName={contextMenu.barName}
+          parentDimension={getParentDimension() as any}
+          onDrillLevelSelect={handleDrillLevelSelect}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

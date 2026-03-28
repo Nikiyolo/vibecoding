@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -15,6 +16,10 @@ import {
 interface ChartProps {
   data: any[];
   title: string;
+}
+
+interface BreakdownChartProps extends ChartProps {
+  onBarRightClick?: (barName: string, x: number, y: number) => void;
 }
 
 // Utility to auto-detect the likely X and Y axes from dynamic data
@@ -151,7 +156,7 @@ export function TrendChart({ data, title }: ChartProps) {
   );
 }
 
-export function BreakdownChart({ data, title }: ChartProps) {
+export function BreakdownChart({ data, title, onBarRightClick }: BreakdownChartProps) {
   if (!data || data.length === 0) {
     return <div className="h-64 flex items-center justify-center text-muted-foreground">No breakdown data available</div>;
   }
@@ -179,6 +184,9 @@ export function BreakdownChart({ data, title }: ChartProps) {
   return (
     <div className="w-full flex flex-col h-full">
       {title && <h3 className="text-lg font-semibold mb-6">{title}</h3>}
+      {onBarRightClick && (
+        <p className="text-xs text-muted-foreground mb-3 italic">Click on a bar to drill down into its details</p>
+      )}
       <div className="flex-1 min-h-[300px] w-full">
         <ResponsiveContainer width="100%" height={300}>
           <BarChart 
@@ -231,6 +239,15 @@ export function BreakdownChart({ data, title }: ChartProps) {
               dataKey={y}
               radius={[0, 8, 8, 0]}
               animationDuration={1500}
+              onClick={(data: any, _: number, e: any) => {
+                if (onBarRightClick && data) {
+                  const rect = (e.currentTarget as SVGElement)?.getBoundingClientRect?.();
+                  const clientX = rect ? rect.right : e.clientX;
+                  const clientY = rect ? rect.top + rect.height / 2 : e.clientY;
+                  onBarRightClick(data[x], clientX, clientY);
+                }
+              }}
+              cursor={onBarRightClick ? "pointer" : "default"}
             >
               {processedData.map((_, index) => (
                 <Cell 
@@ -242,6 +259,36 @@ export function BreakdownChart({ data, title }: ChartProps) {
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Clickable dimension list for drill-down */}
+      {onBarRightClick && processedData.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {processedData.map((item, index) => (
+            <button
+              key={index}
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                onBarRightClick(String(item[x]), rect.right, rect.top + rect.height / 2);
+              }}
+              data-testid={`drilldown-bar-${String(item[x]).toLowerCase().replace(/\s+/g, '-')}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105"
+              style={{ 
+                backgroundColor: colorPalette[index % colorPalette.length] + '20',
+                color: colorPalette[index % colorPalette.length],
+                border: `1px solid ${colorPalette[index % colorPalette.length]}40`
+              }}
+            >
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ backgroundColor: colorPalette[index % colorPalette.length] }}
+              />
+              {String(item[x])}
+              <span className="opacity-60">→</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

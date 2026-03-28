@@ -495,5 +495,122 @@ export async function registerRoutes(
     }
   });
 
+  // Drill-down endpoint: fetch metric data at a more granular hierarchy level
+  app.post('/api/drilldown', async (req, res) => {
+    try {
+      const schema = z.object({
+        metric: z.enum(["revenue", "cost", "profit"]),
+        timeRange: z.string().optional(),
+        parentDimension: z.enum(["category", "subcategory", "material", "region"]),
+        parentValue: z.string(),
+        drillLevel: z.enum(["category", "subcategory", "material", "sku", "region"]),
+      });
+      const input = schema.parse(req.body);
+      
+      const allData = await storage.getMetrics();
+      
+      // Build full hierarchy map
+      const allSkuRows = await db.select().from(skus);
+      type HierarchyEntry = { category: string; categoryId: number; subcategory: string; subcategoryId: number; material: string; materialId: number; sku: string; skuId: number };
+      const hierarchyMap = new Map<number, HierarchyEntry>();
+      
+      for (const sku of allSkuRows) {
+        const mat = await db.select().from(materialCodes).where(eq(materialCodes.id, sku.materialCodeId)).then(r => r[0]);
+        if (!mat) continue;
+        const subcat = await db.select().from(productSubcategories).where(eq(productSubcategories.id, mat.subcategoryId)).then(r => r[0]);
+        if (!subcat) continue;
+        const cat = await db.select().from(productCategories).where(eq(productCategories.id, subcat.categoryId)).then(r => r[0]);
+        if (!cat) continue;
+        
+        hierarchyMap.set(sku.id, {
+          category: cat.categoryName,
+          categoryId: cat.id,
+          subcategory: subcat.subcategoryName,
+          subcategoryId: subcat.id,
+          material: mat.materialCode,
+          materialId: mat.id,
+          sku: sku.sku,
+          skuId: sku.id,
+        });
+      }
+      
+      // Helper to check time range match
+      const matchesTimeRange = (dateStr: string, timeRange?: string): boolean => {
+        if (!timeRange) return true;
+        const year = dateStr.slice(0, 4);
+        const month = dateStr.slice(5, 7);
+        if (/^\d{4}$/.test(timeRange)) return year === timeRange;
+        if (timeRange.toLowerCase().includes("q1")) return ["01","02","03"].includes(month);
+        if (timeRange.toLowerCase().includes("q2")) return ["04","05","06"].includes(month);
+        if (timeRange.toLowerCase().includes("q3")) return ["07","08","09"].includes(month);
+        if (timeRange.toLowerCase().includes("q4")) return ["10","11","12"].includes(month);
+        return true;
+      };
+      
+      // Filter data by parentDimension/parentValue and timeRange
+      const aggregateMap = new Map<string, { value: number; count: number }>();
+      
+      allData.forEach(d => {
+        const dateStr = new Date(d.date).toISOString().slice(0, 7);
+        if (!matchesTimeRange(dateStr, input.timeRange)) return;
+        
+        const h = hierarchyMap.get(d.skuId);
+        if (!h) return;
+        
+        // Check if this record belongs to the parent dimension's value
+        let matchesParent = false;
+        if (input.parentDimension === "category") matchesParent = h.category === input.parentValue;
+        else if (input.parentDimension === "subcategory") matchesParent = h.subcategory === input.parentValue;
+        else if (input.parentDimension === "material") matchesParent = h.material === input.parentValue;
+        else if (input.parentDimension === "region") matchesParent = d.region === input.parentValue;
+        
+        if (!matchesParent) return;
+        
+        // Get the drill-level key
+        let drillKey = "Unknown";
+        if (input.drillLevel === "category") drillKey = h.category;
+        else if (input.drillLevel === "subcategory") drillKey = h.subcategory;
+        else if (input.drillLevel === "material") drillKey = h.material;
+        else if (input.drillLevel === "sku") drillKey = h.sku;
+        else if (input.drillLevel === "region") drillKey = d.region;
+        
+        const revenue = Number(d.revenue) || 0;
+        const cost = Number(d.cost) || 0;
+        const profit = Number(d.profit) || 0;
+        
+        let metricValue = 0;
+        if (input.metric === "profit") {
+          metricValue = revenue > 0 ? (profit / revenue) * 100 : 0;
+        } else if (input.metric === "cost") {
+          metricValue = cost;
+        } else {
+          metricValue = revenue;
+        }
+        
+        if (!aggregateMap.has(drillKey)) {
+          aggregateMap.set(drillKey, { value: 0, count: 0 });
+        }
+        const entry = aggregateMap.get(drillKey)!;
+        entry.value += metricValue;
+        entry.count += 1;
+      });
+      
+      const drillDownData = Array.from(aggregateMap.entries()).map(([name, { value, count }]) => ({
+        name,
+        value: input.metric === "profit"
+          ? parseFloat((value / count).toFixed(2))
+          : parseFloat((value / count).toFixed(2))
+      })).sort((a, b) => b.value - a.value);
+      
+      res.json({ drillDownData });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }
