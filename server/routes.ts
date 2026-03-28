@@ -102,8 +102,14 @@ export async function registerRoutes(
       // Helper function to determine if a date matches the requested time range
       const dateMatchesTimeRange = (dateStr: string, timeRange: string | null): boolean => {
         if (!timeRange) return true;
-        const month = dateStr.slice(5, 7); // Extract month from YYYY-MM
+        const year = dateStr.slice(0, 4);
+        const month = dateStr.slice(5, 7);
         const lowerTimeRange = timeRange.toLowerCase();
+        
+        // Check for year (e.g., "2023", "2024")
+        if (/^\d{4}$/.test(timeRange)) {
+          return year === timeRange;
+        }
         
         if (lowerTimeRange.includes("q1")) return ["01", "02", "03"].includes(month);
         if (lowerTimeRange.includes("q2")) return ["04", "05", "06"].includes(month);
@@ -125,6 +131,17 @@ export async function registerRoutes(
         if (lowerTimeRange.includes("december") || lowerTimeRange.includes("dec")) return month === "12";
         
         return true; // Default to all if no time range matched
+      };
+      
+      // Detect dimension from query (by region, by category, by product, etc.)
+      const detectBreakdownDimension = (query: string): "region" | "category" => {
+        const lowerQuery = query.toLowerCase();
+        if (lowerQuery.includes("by region") || lowerQuery.includes("by regions")) return "region";
+        if (lowerQuery.includes("by category") || lowerQuery.includes("by categories")) return "category";
+        if (lowerQuery.includes("by product")) return "category";
+        // Default to region if "breakdown" is mentioned without specifying dimension
+        if (lowerQuery.includes("breakdown")) return "region";
+        return "category"; // Default fallback
       };
       
       // If asking for profit margin, calculate it per category
@@ -239,27 +256,53 @@ export async function registerRoutes(
         })).sort((a, b) => a.date.localeCompare(b.date));
       }
       
-      // Aggregate profit margin by category (only if not a highest query)
+      // Detect breakdown dimension and aggregate data accordingly
+      const breakdownDimension = detectBreakdownDimension(query);
       const breakdownMap = new Map();
+      
       allData.forEach(d => {
-        const hierarchy = skuMap.get(d.skuId);
-        const categoryName = hierarchy?.category || "Unknown";
-        const revenue = Number(d.revenue) || 0;
-        const profit = Number(d.profit) || 0;
-        const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
+        const dateStr = new Date(d.date).toISOString().slice(0, 7);
         
-        if (!breakdownMap.has(categoryName)) {
-          breakdownMap.set(categoryName, { name: categoryName, value: 0, count: 0 });
+        // Filter by time range
+        if (interpretation.timeRange && !dateMatchesTimeRange(dateStr, interpretation.timeRange)) return;
+        
+        const hierarchy = skuMap.get(d.skuId);
+        const revenue = Number(d.revenue) || 0;
+        const cost = Number(d.cost) || 0;
+        const profit = Number(d.profit) || 0;
+        
+        // Get the dimension value to group by
+        let dimensionValue = "Unknown";
+        if (breakdownDimension === "region") {
+          dimensionValue = d.region || "Unknown";
+        } else {
+          dimensionValue = hierarchy?.category || "Unknown";
         }
-        const entry = breakdownMap.get(categoryName);
-        entry.value += profitMargin;
+        
+        // Calculate the metric value
+        let metricValue = 0;
+        if (interpretation.metric === "profit") {
+          metricValue = revenue > 0 ? (profit / revenue) * 100 : 0; // profit margin %
+        } else if (interpretation.metric === "cost") {
+          metricValue = Number(cost);
+        } else {
+          metricValue = Number(revenue);
+        }
+        
+        if (!breakdownMap.has(dimensionValue)) {
+          breakdownMap.set(dimensionValue, { name: dimensionValue, value: 0, count: 0 });
+        }
+        const entry = breakdownMap.get(dimensionValue)!;
+        entry.value += metricValue;
         entry.count += 1;
       });
       
-      // Calculate average profit margin for each category
+      // Calculate average for each dimension value
       const breakdownData = Array.from(breakdownMap.values()).map(item => ({
         name: item.name,
-        value: parseFloat((item.value / item.count).toFixed(2))
+        value: interpretation.metric === "profit" && item.count > 0
+          ? parseFloat((item.value / item.count).toFixed(2))
+          : parseFloat((item.value / item.count).toFixed(2))
       }));
       
       let rootCauses = [];
