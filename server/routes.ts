@@ -4,9 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { openai } from "./replit_integrations/image/client"; // Reusing the OpenAI client from the AI integrations module
-import { performanceMetrics, skus, materialCodes, productSubcategories, productCategories } from "@shared/schema";
-import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { performanceMetrics } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -77,37 +75,26 @@ export async function registerRoutes(
       });
       const trendData = Array.from(trendMap.values()).sort((a, b) => a.date.localeCompare(b.date));
       
-      // Aggregate by category for breakdown
-      // We need to get SKU details with hierarchy
-      const skuMap = new Map<number, any>();
-      const allSkus = await storage.getSkus();
-      
-      for (const sku of allSkus) {
-        const [materialCode] = await db.select().from(materialCodes).where(eq(materialCodes.id, sku.materialCodeId));
-        if (materialCode) {
-          const [subcategory] = await db.select().from(productSubcategories).where(eq(productSubcategories.id, materialCode.subcategoryId));
-          if (subcategory) {
-            const [category] = await db.select().from(productCategories).where(eq(productCategories.id, subcategory.categoryId));
-            skuMap.set(sku.id, {
-              sku: sku.sku,
-              material: materialCode.materialCode,
-              subcategory: subcategory.subcategoryName,
-              category: category?.categoryName || "Unknown"
-            });
-          }
-        }
-      }
-      
+      // Aggregate by product for breakdown - now showing profit margin
       const breakdownMap = new Map();
       allData.forEach(d => {
-        const skuDetails = skuMap.get(d.skuId);
-        const categoryName = skuDetails?.category || "Unknown";
-        if (!breakdownMap.has(categoryName)) {
-          breakdownMap.set(categoryName, { name: categoryName, value: 0 });
+        const revenue = Number(d.revenue) || 0;
+        const profit = Number(d.profit) || 0;
+        const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
+        
+        if (!breakdownMap.has(d.product)) {
+          breakdownMap.set(d.product, { name: d.product, value: 0, count: 0 });
         }
-        breakdownMap.get(categoryName).value += Number(d[interpretation.metric as keyof typeof d] || 0);
+        const entry = breakdownMap.get(d.product);
+        entry.value += profitMargin;
+        entry.count += 1;
       });
-      const breakdownData = Array.from(breakdownMap.values());
+      
+      // Calculate average profit margin for each product
+      const breakdownData = Array.from(breakdownMap.values()).map(item => ({
+        name: item.name,
+        value: parseFloat((item.value / item.count).toFixed(2))
+      }));
       
       let rootCauses = [];
       let explanationPrompt = `Explain the following data findings based on the user's query: "${query}".
@@ -126,36 +113,44 @@ export async function registerRoutes(
           return String(date).slice(0, 7);
         };
         
-        // Analyze category performance
-        const categoryPerformance = new Map();
+        // Analyze product profit margin performance
+        const productPerformance = new Map();
         allData.forEach(d => {
-          const skuDetails = skuMap.get(d.skuId);
-          const key = skuDetails?.category || "Unknown";
+          const key = d.product;
           const dateMonth = getDateMonth(d.date);
+          const revenue = Number(d.revenue) || 0;
+          const profit = Number(d.profit) || 0;
+          const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
           
-          if (!categoryPerformance.has(key)) {
-            categoryPerformance.set(key, { first: 0, last: 0 });
+          if (!productPerformance.has(key)) {
+            productPerformance.set(key, { first: 0, count1: 0, last: 0, count2: 0 });
           }
-          const perf = categoryPerformance.get(key);
-          const value = Number(d[interpretation.metric as keyof typeof d] || 0);
+          const perf = productPerformance.get(key);
           
-          if (dateMonth === firstMonthStr) perf.first += value;
-          if (dateMonth === lastMonthStr) perf.last += value;
+          if (dateMonth === firstMonthStr) {
+            perf.first += profitMargin;
+            perf.count1 += 1;
+          }
+          if (dateMonth === lastMonthStr) {
+            perf.last += profitMargin;
+            perf.count2 += 1;
+          }
         });
         
-        // Calculate percentages for categories
-        const categoryImpact = Array.from(categoryPerformance.entries())
-          .map(([name, perf]) => ({
-            name,
-            first: perf.first,
-            last: perf.last,
-            change: perf.first > 0 ? ((perf.first - perf.last) / perf.first) * 100 : 0
-          }))
-          .filter(p => p.first > 0 && p.change !== 0) // Only include if there's actual data and change
+        // Calculate average profit margin change for each product
+        const productImpact = Array.from(productPerformance.entries())
+          .map(([name, perf]) => {
+            const firstMargin = perf.count1 > 0 ? perf.first / perf.count1 : 0;
+            const lastMargin = perf.count2 > 0 ? perf.last / perf.count2 : 0;
+            return {
+              name,
+              first: firstMargin,
+              last: lastMargin,
+              change: firstMargin > 0 ? ((firstMargin - lastMargin) / firstMargin) * 100 : 0
+            };
+          })
+          .filter(p => p.first > 0 && Math.abs(p.change) > 0.5) // Only include meaningful changes
           .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
-        
-        // Update root causes to use categories instead of products
-        const productImpact = categoryImpact;
         
         // Analyze region performance
         const regionPerformance = new Map();
@@ -187,7 +182,7 @@ export async function registerRoutes(
         // Build root causes array with top contributors
         if (productImpact.length > 0) {
           rootCauses.push({
-            dimension: "category",
+            dimension: "product",
             topContributor: productImpact[0].name,
             changePercentage: -Math.round(productImpact[0].change * 10) / 10
           });
