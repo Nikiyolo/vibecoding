@@ -4,7 +4,9 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { openai } from "./replit_integrations/image/client"; // Reusing the OpenAI client from the AI integrations module
-import { performanceMetrics } from "@shared/schema";
+import { performanceMetrics, skus, materialCodes, productSubcategories, productCategories } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -75,13 +77,35 @@ export async function registerRoutes(
       });
       const trendData = Array.from(trendMap.values()).sort((a, b) => a.date.localeCompare(b.date));
       
-      // Aggregate by product for breakdown
+      // Aggregate by category for breakdown
+      // We need to get SKU details with hierarchy
+      const skuMap = new Map<number, any>();
+      const allSkus = await storage.getSkus();
+      
+      for (const sku of allSkus) {
+        const [materialCode] = await db.select().from(materialCodes).where(eq(materialCodes.id, sku.materialCodeId));
+        if (materialCode) {
+          const [subcategory] = await db.select().from(productSubcategories).where(eq(productSubcategories.id, materialCode.subcategoryId));
+          if (subcategory) {
+            const [category] = await db.select().from(productCategories).where(eq(productCategories.id, subcategory.categoryId));
+            skuMap.set(sku.id, {
+              sku: sku.sku,
+              material: materialCode.materialCode,
+              subcategory: subcategory.subcategoryName,
+              category: category?.categoryName || "Unknown"
+            });
+          }
+        }
+      }
+      
       const breakdownMap = new Map();
       allData.forEach(d => {
-        if (!breakdownMap.has(d.product)) {
-          breakdownMap.set(d.product, { name: d.product, value: 0 });
+        const skuDetails = skuMap.get(d.skuId);
+        const categoryName = skuDetails?.category || "Unknown";
+        if (!breakdownMap.has(categoryName)) {
+          breakdownMap.set(categoryName, { name: categoryName, value: 0 });
         }
-        breakdownMap.get(d.product).value += Number(d[interpretation.metric as keyof typeof d] || 0);
+        breakdownMap.get(categoryName).value += Number(d[interpretation.metric as keyof typeof d] || 0);
       });
       const breakdownData = Array.from(breakdownMap.values());
       
@@ -102,24 +126,25 @@ export async function registerRoutes(
           return String(date).slice(0, 7);
         };
         
-        // Analyze product performance
-        const productPerformance = new Map();
+        // Analyze category performance
+        const categoryPerformance = new Map();
         allData.forEach(d => {
-          const key = d.product;
+          const skuDetails = skuMap.get(d.skuId);
+          const key = skuDetails?.category || "Unknown";
           const dateMonth = getDateMonth(d.date);
           
-          if (!productPerformance.has(key)) {
-            productPerformance.set(key, { first: 0, last: 0 });
+          if (!categoryPerformance.has(key)) {
+            categoryPerformance.set(key, { first: 0, last: 0 });
           }
-          const perf = productPerformance.get(key);
+          const perf = categoryPerformance.get(key);
           const value = Number(d[interpretation.metric as keyof typeof d] || 0);
           
           if (dateMonth === firstMonthStr) perf.first += value;
           if (dateMonth === lastMonthStr) perf.last += value;
         });
         
-        // Calculate percentages for products
-        const productImpact = Array.from(productPerformance.entries())
+        // Calculate percentages for categories
+        const categoryImpact = Array.from(categoryPerformance.entries())
           .map(([name, perf]) => ({
             name,
             first: perf.first,
@@ -128,6 +153,9 @@ export async function registerRoutes(
           }))
           .filter(p => p.first > 0 && p.change !== 0) // Only include if there's actual data and change
           .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+        
+        // Update root causes to use categories instead of products
+        const productImpact = categoryImpact;
         
         // Analyze region performance
         const regionPerformance = new Map();
@@ -159,7 +187,7 @@ export async function registerRoutes(
         // Build root causes array with top contributors
         if (productImpact.length > 0) {
           rootCauses.push({
-            dimension: "product",
+            dimension: "category",
             topContributor: productImpact[0].name,
             changePercentage: -Math.round(productImpact[0].change * 10) / 10
           });
