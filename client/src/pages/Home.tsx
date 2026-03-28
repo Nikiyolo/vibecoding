@@ -186,106 +186,196 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Main Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Determine Layout Type */}
+            {(() => {
+              const isCausalQuery = analyzeMutation.data.interpretation.intent === "root_cause";
+              const hasBreakdown = analyzeMutation.data.breakdownData && analyzeMutation.data.breakdownData.length > 0;
               
-              {/* Left Sidebar - Structured AI Insights */}
-              <div className="lg:col-span-1 flex flex-col gap-4">
-                
-                {/* Trend Description */}
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <BarChart3 className="w-5 h-5 text-blue-600" />
-                    <h3 className="font-bold text-sm text-foreground">Trend</h3>
-                  </div>
-                  <p className="text-xs leading-relaxed text-foreground/85">
-                    {analyzeMutation.data.trendDescription}
-                  </p>
-                </div>
-
-                {/* Root Causes Analysis */}
-                {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
-                  <div className="bg-white border border-orange-200 rounded-2xl p-5">
-                    <div className="flex items-center gap-2 mb-3">
-                      <AlertTriangle className="w-5 h-5 text-orange-600" />
-                      <h3 className="font-bold text-sm text-foreground">Root Causes</h3>
+              // Layout 1: Factual Query (Metric Only) - Just trend chart
+              if (!isCausalQuery && !hasBreakdown) {
+                return (
+                  <div className="w-full">
+                    <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                      <h3 className="text-lg font-bold mb-6 text-foreground">
+                        {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} Trend
+                      </h3>
+                      <TrendChart 
+                        data={analyzeMutation.data.trendData} 
+                        title="" 
+                      />
                     </div>
-                    <div className="space-y-2 mb-3">
-                      {analyzeMutation.data.rootCauses.map((cause, idx) => (
-                        <div key={idx} className="pb-2 border-b border-gray-200 last:border-b-0 last:pb-0">
-                          <p className="text-xs font-semibold text-gray-500 uppercase">{cause.dimension}</p>
-                          <div className="flex items-center justify-between mt-1">
-                            <p className="text-xs font-medium text-foreground">{cause.topContributor}</p>
-                            <span className="text-xs font-bold text-red-600">-{Math.abs(cause.changePercentage)}%</span>
+                  </div>
+                );
+              }
+
+              // Layout 2: Factual with Dimension Breakdown - Trend + Breakdown
+              if (!isCausalQuery && hasBreakdown) {
+                return (
+                  <div className="flex flex-col gap-6 w-full">
+                    <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                      <h3 className="text-lg font-bold mb-6 text-foreground">
+                        {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} Trend
+                      </h3>
+                      <TrendChart 
+                        data={analyzeMutation.data.trendData} 
+                        title="" 
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                        <h3 className="text-lg font-bold mb-6 text-foreground">Breakdown by Category</h3>
+                        <BreakdownChart 
+                          data={analyzeMutation.data.breakdownData} 
+                          title="" 
+                        />
+                      </div>
+
+                      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                        <h3 className="text-lg font-bold mb-6 text-foreground">Category Details</h3>
+                        <div className="space-y-3">
+                          {analyzeMutation.data.breakdownData.map((item: any, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-b-0 last:pb-0">
+                              <div className="flex items-center gap-3">
+                                <div className="w-3 h-3 rounded-full" style={{ 
+                                  backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'][idx % 3]
+                                }}></div>
+                                <span className="text-sm font-medium text-foreground">{item.name}</span>
+                              </div>
+                              <span className="text-sm font-semibold text-foreground">
+                                {typeof item.value === 'number' && item.value > 100 
+                                  ? `${(Number(item.value) / 1000).toFixed(1)}k`
+                                  : `${Number(item.value).toFixed(1)}%`
+                                }
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Layout 3: Causal Query - Full dashboard with sidebar
+              if (isCausalQuery) {
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    {/* Left Sidebar - Analysis Summary & Suggestions */}
+                    <div className="lg:col-span-1 flex flex-col gap-4">
+                      
+                      {/* Analysis Summary */}
+                      <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-2xl p-5">
+                        <div className="flex items-center gap-2 mb-3">
+                          <TrendingDown className="w-5 h-5 text-purple-600" />
+                          <h3 className="font-bold text-sm text-foreground">Analysis Summary</h3>
+                        </div>
+                        <p className="text-xs leading-relaxed text-foreground/85 mb-3">
+                          {analyzeMutation.data.trendDescription}
+                        </p>
+                        {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
+                          <div className="pt-3 border-t border-purple-200">
+                            <p className="text-xs font-semibold text-purple-600 uppercase mb-2">Key Impact Factors:</p>
+                            {analyzeMutation.data.rootCauses.map((cause, idx) => (
+                              <div key={idx} className="text-xs text-foreground/75">
+                                <span className="font-medium">{cause.topContributor}</span>
+                                <span className="text-red-600 font-bold ml-1">({cause.dimension})</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Root Causes Detailed */}
+                      {analyzeMutation.data.rootCauses && analyzeMutation.data.rootCauses.length > 0 && (
+                        <div className="bg-white border border-orange-200 rounded-2xl p-5">
+                          <div className="flex items-center gap-2 mb-3">
+                            <AlertTriangle className="w-5 h-5 text-orange-600" />
+                            <h3 className="font-bold text-sm text-foreground">Root Causes</h3>
+                          </div>
+                          <div className="space-y-2 mb-3">
+                            {analyzeMutation.data.rootCauses.map((cause, idx) => (
+                              <div key={idx} className="pb-2 border-b border-gray-200 last:border-b-0 last:pb-0">
+                                <p className="text-xs font-semibold text-gray-500 uppercase">{cause.dimension}</p>
+                                <div className="flex items-center justify-between mt-1">
+                                  <p className="text-xs font-medium text-foreground">{cause.topContributor}</p>
+                                  <span className="text-xs font-bold text-red-600">-{Math.abs(cause.changePercentage)}%</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-xs leading-relaxed text-foreground/85 border-t border-gray-200 pt-3">
+                            {analyzeMutation.data.rootCausesDescription}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Actionable Suggestions */}
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-5">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Lightbulb className="w-5 h-5 text-green-600" />
+                          <h3 className="font-bold text-sm text-foreground">Recommendations</h3>
+                        </div>
+                        <div className="text-xs leading-relaxed text-foreground/85 prose prose-xs max-w-none prose-headings:text-foreground prose-strong:text-foreground prose-p:my-1 prose-li:my-0.5 prose-ul:my-1 prose-ol:my-1">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {analyzeMutation.data.suggestions}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Main Content - Charts & Drill-down */}
+                    <div className="lg:col-span-3 flex flex-col gap-6">
+                      {/* Trend Chart */}
+                      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                        <h3 className="text-lg font-bold mb-6 text-foreground">
+                          {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} Trend
+                        </h3>
+                        <TrendChart 
+                          data={analyzeMutation.data.trendData} 
+                          title="" 
+                        />
+                      </div>
+
+                      {/* Drill-down Analysis */}
+                      {hasBreakdown && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                            <h3 className="text-lg font-bold mb-6 text-foreground">Drill-down by Category</h3>
+                            <BreakdownChart 
+                              data={analyzeMutation.data.breakdownData} 
+                              title="" 
+                            />
+                          </div>
+
+                          <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                            <h3 className="text-lg font-bold mb-6 text-foreground">Category Comparison</h3>
+                            <div className="space-y-3">
+                              {analyzeMutation.data.breakdownData.map((item: any, idx: number) => (
+                                <div key={idx} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-b-0 last:pb-0">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 rounded-full" style={{ 
+                                      backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'][idx % 3]
+                                    }}></div>
+                                    <span className="text-sm font-medium text-foreground">{item.name}</span>
+                                  </div>
+                                  <span className="text-sm font-semibold text-foreground">
+                                    {typeof item.value === 'number' && item.value > 100 
+                                      ? `${(Number(item.value) / 1000).toFixed(1)}k`
+                                      : `${Number(item.value).toFixed(1)}%`
+                                    }
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                    <p className="text-xs leading-relaxed text-foreground/85 border-t border-gray-200 pt-3">
-                      {analyzeMutation.data.rootCausesDescription}
-                    </p>
-                  </div>
-                )}
-
-                {/* Actionable Suggestions */}
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Lightbulb className="w-5 h-5 text-green-600" />
-                    <h3 className="font-bold text-sm text-foreground">Suggestions</h3>
-                  </div>
-                  <div className="text-xs leading-relaxed text-foreground/85 prose prose-xs max-w-none prose-headings:text-foreground prose-strong:text-foreground prose-p:my-1 prose-li:my-0.5 prose-ul:my-1 prose-ol:my-1">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {analyzeMutation.data.suggestions}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-
-              {/* Main Content - Charts & Tables */}
-              <div className="lg:col-span-3 flex flex-col gap-6">
-                {/* Trend Chart */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                  <h3 className="text-lg font-bold mb-6 text-foreground">Revenue Trend</h3>
-                  <TrendChart 
-                    data={analyzeMutation.data.trendData} 
-                    title="" 
-                  />
-                </div>
-
-                {/* Breakdown Section */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Breakdown Chart */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                    <h3 className="text-lg font-bold mb-6 text-foreground">By Product</h3>
-                    <BreakdownChart 
-                      data={analyzeMutation.data.breakdownData} 
-                      title="" 
-                    />
-                  </div>
-
-                  {/* Breakdown Table */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                    <h3 className="text-lg font-bold mb-6 text-foreground">Product Details</h3>
-                    <div className="space-y-3">
-                      {analyzeMutation.data.breakdownData && analyzeMutation.data.breakdownData.map((item: any, idx: number) => (
-                        <div key={idx} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-b-0 last:pb-0">
-                          <div className="flex items-center gap-3">
-                            <div className="w-3 h-3 rounded-full bg-blue-500" style={{ 
-                              backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'][idx % 3]
-                            }}></div>
-                            <span className="text-sm font-medium text-foreground">{item.name}</span>
-                          </div>
-                          <span className="text-sm font-semibold text-foreground">
-                            ${(Number(item.value) / 1000).toFixed(1)}k
-                          </span>
-                        </div>
-                      ))}
+                      )}
                     </div>
                   </div>
-                </div>
-              </div>
-
-            </div>
+                );
+              }
+            })()}
           </motion.div>
         )}
       </main>
