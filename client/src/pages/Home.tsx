@@ -4,6 +4,7 @@ import { Sparkles, ArrowRight, BarChart3, Search, Lightbulb, AlertTriangle, Tren
 import { useAnalyzeQuery } from "../hooks/use-analyze";
 import { BreakdownChart } from "../components/MetricCharts";
 import { CrossTable } from "../components/CrossTable";
+import { CausalCrossTable } from "../components/CausalCrossTable";
 import { DrillDownPanel } from "../components/DrillDownPanel";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -422,16 +423,33 @@ export default function Home() {
 
                     {/* Main Content - Charts & Drill-down */}
                     <div className="lg:col-span-3 flex flex-col gap-6">
-                      {/* Cross Table */}
+                      {/* Time-Comparison Cross Table (causal) */}
                       <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                        <h3 className="text-lg font-bold mb-2 text-foreground">
-                          {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Product × Region
-                        </h3>
-                        <p className="text-xs text-muted-foreground mb-5">Aggregated by product category and sales region</p>
-                        <CrossTable 
-                          data={(analyzeMutation.data as any).crossTableData}
-                          metric={analyzeMutation.data.interpretation.metric}
-                        />
+                        {(analyzeMutation.data as any).causalCrossTableData ? (
+                          <>
+                            <h3 className="text-lg font-bold mb-2 text-foreground">
+                              {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Period Comparison by Region
+                            </h3>
+                            <p className="text-xs text-muted-foreground mb-5">
+                              Current vs prior period, broken down by product category and sales region
+                            </p>
+                            <CausalCrossTable
+                              data={(analyzeMutation.data as any).causalCrossTableData}
+                              metric={analyzeMutation.data.interpretation.metric}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <h3 className="text-lg font-bold mb-2 text-foreground">
+                              {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} — Product × Region
+                            </h3>
+                            <p className="text-xs text-muted-foreground mb-5">Aggregated by product category and sales region</p>
+                            <CrossTable
+                              data={(analyzeMutation.data as any).crossTableData}
+                              metric={analyzeMutation.data.interpretation.metric}
+                            />
+                          </>
+                        )}
                       </div>
 
                       {/* Breakdown Impact Analysis with Drill-down */}

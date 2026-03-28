@@ -549,10 +549,155 @@ export async function registerRoutes(
 
       const crossTableData = { regions, rows: crossTableRows, columnTotals, grandTotal };
 
+      // ── Causal Time-Comparison Cross Table ───────────────────────────────────
+      // For root_cause queries: build a category × region table for BOTH the
+      // query period AND the immediately preceding period of the same granularity.
+
+      function resolveCausalPeriods(timeRange: string) {
+        const lower = (timeRange || '').toLowerCase();
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth(); // 0-based (March 2026 → 2)
+
+        const isoKey = (d: Date) => d.toISOString().slice(0, 7);
+        const label = (key: string) => {
+          const [y, m] = key.split('-').map(Number);
+          return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+        };
+
+        // "last month"
+        if (lower.includes('last month') || lower.includes('previous month')) {
+          const cur = new Date(year, month - 1, 1);
+          const prev = new Date(year, month - 2, 1);
+          const ck = isoKey(cur); const pk = isoKey(prev);
+          return { currentKeys: [ck], previousKeys: [pk], currentLabel: label(ck), previousLabel: label(pk) };
+        }
+
+        // "last quarter"
+        if (lower.includes('last quarter') || lower.includes('previous quarter')) {
+          const curQStartMonth = Math.floor(month / 3) * 3;
+          const lqStart = new Date(year, curQStartMonth - 3, 1);
+          const pqStart = new Date(year, curQStartMonth - 6, 1);
+          const qKeys = (start: Date) => [0, 1, 2].map(i => isoKey(new Date(start.getFullYear(), start.getMonth() + i, 1)));
+          const qLabel = (keys: string[]) => {
+            const d = new Date(keys[0] + '-01');
+            return `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`;
+          };
+          const ck = qKeys(lqStart); const pk = qKeys(pqStart);
+          return { currentKeys: ck, previousKeys: pk, currentLabel: qLabel(ck), previousLabel: qLabel(pk) };
+        }
+
+        // "last year"
+        if (lower.includes('last year') || lower.includes('previous year')) {
+          const yy = (y: number) => Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
+          return { currentKeys: yy(year - 1), previousKeys: yy(year - 2), currentLabel: String(year - 1), previousLabel: String(year - 2) };
+        }
+
+        // Specific 4-digit year e.g. "2025"
+        const ym = lower.match(/\b(20\d{2})\b/);
+        if (ym) {
+          const sy = parseInt(ym[1]);
+          const yy = (y: number) => Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
+          return { currentKeys: yy(sy), previousKeys: yy(sy - 1), currentLabel: String(sy), previousLabel: String(sy - 1) };
+        }
+
+        // Default: last 3 months vs 3 months before
+        const last3 = [2, 1, 0].map(i => isoKey(new Date(year, month - 1 - i, 1)));
+        const prev3 = [5, 4, 3].map(i => isoKey(new Date(year, month - 1 - i, 1)));
+        return {
+          currentKeys: last3, previousKeys: prev3,
+          currentLabel: `${label(last3[0])} – ${label(last3[2])}`,
+          previousLabel: `${label(prev3[0])} – ${label(prev3[2])}`,
+        };
+      }
+
+      let causalCrossTableData: any = null;
+
+      if (interpretation.intent === 'root_cause') {
+        const { currentKeys, previousKeys, currentLabel, previousLabel } =
+          resolveCausalPeriods(interpretation.timeRange);
+
+        type PE = { metricSum: number; revenueSum: number };
+        const causalMap = new Map<string, { cur: Map<string, PE>; prev: Map<string, PE> }>();
+        const causalRegions = new Set<string>();
+        const mk = interpretation.metric as 'revenue' | 'cost' | 'profit';
+        const causalIsProfit = mk === 'profit';
+
+        allData.forEach(d => {
+          const dk = new Date(d.date).toISOString().slice(0, 7);
+          const isCur = currentKeys.includes(dk);
+          const isPrev = previousKeys.includes(dk);
+          if (!isCur && !isPrev) return;
+
+          const cat = skuMap.get(d.skuId)?.category || 'Unknown';
+          const reg = d.region || 'Unknown';
+          causalRegions.add(reg);
+
+          if (!causalMap.has(cat)) causalMap.set(cat, { cur: new Map(), prev: new Map() });
+          const tm = isCur ? causalMap.get(cat)!.cur : causalMap.get(cat)!.prev;
+          if (!tm.has(reg)) tm.set(reg, { metricSum: 0, revenueSum: 0 });
+          const e = tm.get(reg)!;
+          e.metricSum += Number(d[mk]) || 0;
+          e.revenueSum += Number(d.revenue) || 0;
+        });
+
+        const calcVal = (e: PE | undefined) => {
+          if (!e) return 0;
+          return causalIsProfit ? (e.revenueSum > 0 ? (e.metricSum / e.revenueSum) * 100 : 0) : e.metricSum;
+        };
+        const fmt = (v: number) => parseFloat(v.toFixed(causalIsProfit ? 1 : 2));
+
+        const cRegions = Array.from(causalRegions).sort();
+        const cCats = Array.from(causalMap.keys()).sort();
+
+        const cRows = cCats.map(cat => {
+          const { cur, prev } = causalMap.get(cat)!;
+          const cv: Record<string, number> = {}; const pv: Record<string, number> = {};
+          let cm = 0, cr = 0, pm = 0, pr = 0;
+          cRegions.forEach(r => {
+            const ce = cur.get(r); const pe = prev.get(r);
+            cv[r] = fmt(calcVal(ce)); pv[r] = fmt(calcVal(pe));
+            if (ce) { cm += ce.metricSum; cr += ce.revenueSum; }
+            if (pe) { pm += pe.metricSum; pr += pe.revenueSum; }
+          });
+          const crt = fmt(causalIsProfit ? (cr > 0 ? (cm / cr) * 100 : 0) : cm);
+          const prt = fmt(causalIsProfit ? (pr > 0 ? (pm / pr) * 100 : 0) : pm);
+          return { category: cat, currentValues: cv, previousValues: pv, currentRowTotal: crt, previousRowTotal: prt };
+        });
+
+        const curColTotals: Record<string, number> = {};
+        const prevColTotals: Record<string, number> = {};
+        let cgm = 0, cgr = 0, pgm = 0, pgr = 0;
+        cRegions.forEach(r => {
+          let cm = 0, cr = 0, pm = 0, pr = 0;
+          causalMap.forEach(({ cur, prev }) => {
+            const ce = cur.get(r); const pe = prev.get(r);
+            if (ce) { cm += ce.metricSum; cr += ce.revenueSum; }
+            if (pe) { pm += pe.metricSum; pr += pe.revenueSum; }
+          });
+          curColTotals[r] = fmt(causalIsProfit ? (cr > 0 ? (cm / cr) * 100 : 0) : cm);
+          prevColTotals[r] = fmt(causalIsProfit ? (pr > 0 ? (pm / pr) * 100 : 0) : pm);
+          cgm += cm; cgr += cr; pgm += pm; pgr += pr;
+        });
+
+        const curGrandTotal = fmt(causalIsProfit ? (cgr > 0 ? (cgm / cgr) * 100 : 0) : cgm);
+        const prevGrandTotal = fmt(causalIsProfit ? (pgr > 0 ? (pgm / pgr) * 100 : 0) : pgm);
+
+        causalCrossTableData = {
+          currentLabel, previousLabel,
+          regions: cRegions,
+          rows: cRows,
+          currentColumnTotals: curColTotals,
+          previousColumnTotals: prevColTotals,
+          currentGrandTotal: curGrandTotal, prevGrandTotal,
+        };
+      }
+
       res.json({
         interpretation,
         trendData,
         crossTableData,
+        causalCrossTableData,
         breakdownData: !isHighestQuery ? breakdownData : [],
         rootCauses,
         trendDescription,
