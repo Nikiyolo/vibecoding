@@ -430,39 +430,45 @@ export default function Home() {
                         />
                       </div>
 
-                      {/* Drill-down Analysis */}
+                      {/* Breakdown Impact Analysis with Drill-down */}
                       {hasBreakdown && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <>
                           <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                            <h3 className="text-lg font-bold mb-6 text-foreground">Drill-down by Category</h3>
+                            <h3 className="text-lg font-bold mb-6 text-foreground">Breakdown Impact Analysis</h3>
                             <BreakdownChart 
                               data={analyzeMutation.data.breakdownData} 
                               title="" 
+                              onBarRightClick={handleBarRightClick}
                             />
                           </div>
 
-                          <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                            <h3 className="text-lg font-bold mb-6 text-foreground">Category Comparison</h3>
-                            <div className="space-y-3">
-                              {analyzeMutation.data.breakdownData.map((item: any, idx: number) => (
-                                <div key={idx} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-b-0 last:pb-0">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-3 h-3 rounded-full" style={{ 
-                                      backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'][idx % 3]
-                                    }}></div>
-                                    <span className="text-sm font-medium text-foreground">{item.name}</span>
-                                  </div>
-                                  <span className="text-sm font-semibold text-foreground">
-                                    {typeof item.value === 'number' && item.value > 100 
-                                      ? `${(Number(item.value) / 1000).toFixed(1)}k`
-                                      : `${Number(item.value).toFixed(1)}%`
-                                    }
-                                  </span>
-                                </div>
-                              ))}
+                          {/* Drill-down loading state */}
+                          {drillMutation.isPending && (
+                            <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-center h-40">
+                              <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                                <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-sm">Loading drill-down data...</span>
+                              </div>
                             </div>
-                          </div>
-                        </div>
+                          )}
+
+                          {/* Drill-down results */}
+                          {drillDownResult && !drillMutation.isPending && drillDownResult.data.length > 0 && (
+                            <div className="bg-white border border-blue-200 rounded-2xl p-6">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="text-lg font-bold text-foreground">Dimension Drill-Down Details</h3>
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-6">
+                                Breakdown of <strong>{drillDownResult.parentValue}</strong> by{" "}
+                                <strong className="capitalize">{drillDownResult.drillLevel}</strong>
+                              </p>
+                              <BreakdownChart 
+                                data={drillDownResult.data} 
+                                title="" 
+                              />
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
