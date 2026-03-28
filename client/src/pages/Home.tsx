@@ -239,23 +239,21 @@ export default function Home() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                        <h3 className="text-lg font-bold mb-6 text-foreground">Breakdown by Category</h3>
-                        <BreakdownChart 
-                          data={analyzeMutation.data.breakdownData} 
-                          title="" 
-                        />
-                      </div>
-
-                      <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                        <h3 className="text-lg font-bold mb-6 text-foreground">Impact Analysis</h3>
+                    <div className="bg-white border border-gray-200 rounded-2xl p-6">
+                      <h3 className="text-lg font-bold mb-6 text-foreground">Breakdown Impact Analysis</h3>
+                      <BreakdownChart 
+                        data={analyzeMutation.data.breakdownData} 
+                        title="" 
+                      />
+                      
+                      <div className="mt-8 pt-6 border-t border-gray-200">
+                        <h4 className="text-sm font-semibold text-foreground mb-4 uppercase text-gray-600">Impact Values</h4>
                         <div className="space-y-3">
                           {analyzeMutation.data.breakdownData.map((item: any, idx: number) => (
                             <div key={idx} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-b-0 last:pb-0">
                               <div className="flex items-center gap-3">
                                 <div className="w-3 h-3 rounded-full" style={{ 
-                                  backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'][idx % 3]
+                                  backgroundColor: ['hsl(220 90% 60%)', 'hsl(142 71% 45%)', 'hsl(0 84% 60%)', 'hsl(38 92% 50%)', 'hsl(280 85% 55%)', 'hsl(200 80% 50%)'][idx % 6]
                                 }}></div>
                                 <span className="text-sm font-medium text-foreground">{item.name}</span>
                               </div>
