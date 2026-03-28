@@ -227,7 +227,6 @@ export function BreakdownChart({ data, title }: ChartProps) {
               }}
               cursor={{ fill: 'hsl(var(--muted))', opacity: 0.2 }}
             />
-            <Legend wrapperStyle={{ paddingTop: '20px' }} />
             <Bar 
               dataKey={y}
               radius={[0, 8, 8, 0]}
