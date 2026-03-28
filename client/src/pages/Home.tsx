@@ -245,28 +245,6 @@ export default function Home() {
                         data={analyzeMutation.data.breakdownData} 
                         title="" 
                       />
-                      
-                      <div className="mt-8 pt-6 border-t border-gray-200">
-                        <h4 className="text-sm font-semibold text-foreground mb-4 uppercase text-gray-600">Impact Values</h4>
-                        <div className="space-y-3">
-                          {analyzeMutation.data.breakdownData.map((item: any, idx: number) => (
-                            <div key={idx} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-b-0 last:pb-0">
-                              <div className="flex items-center gap-3">
-                                <div className="w-3 h-3 rounded-full" style={{ 
-                                  backgroundColor: ['hsl(220 90% 60%)', 'hsl(142 71% 45%)', 'hsl(0 84% 60%)', 'hsl(38 92% 50%)', 'hsl(280 85% 55%)', 'hsl(200 80% 50%)'][idx % 6]
-                                }}></div>
-                                <span className="text-sm font-medium text-foreground">{item.name}</span>
-                              </div>
-                              <span className="text-sm font-semibold text-foreground">
-                                {typeof item.value === 'number' && item.value > 100 
-                                  ? `${(Number(item.value) / 1000).toFixed(1)}k`
-                                  : `${Number(item.value).toFixed(1)}%`
-                                }
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
                     </div>
                   </div>
                 );
