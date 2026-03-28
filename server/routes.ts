@@ -182,35 +182,42 @@ export async function registerRoutes(
         return "category"; // Default fallback
       };
       
-      // If asking for profit margin, calculate it per category
-      if (interpretation.metric === "profit" && isHighestQuery) {
-        // Calculate average profit margin by category (filtered by time range)
-        const marginByCategory = new Map<string, { total: number; count: number }>();
-        allData.forEach(d => {
-          const dateStr = new Date(d.date).toISOString().slice(0, 7);
-          if (!dateMatchesTimeRange(dateStr, interpretation.timeRange)) return;
-          
-          const hierarchy = skuMap.get(d.skuId);
-          const categoryName = hierarchy?.category || "Unknown";
-          const revenue = Number(d.revenue) || 0;
-          const profit = Number(d.profit) || 0;
-          const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
-          
-          if (!marginByCategory.has(categoryName)) {
-            marginByCategory.set(categoryName, { total: 0, count: 0 });
+      // Find the top category for any metric when the query asks "highest" / "top"
+      if (isHighestQuery) {
+        if (interpretation.metric === "profit") {
+          // For profit margin: use weighted average (profitSum / revenueSum)
+          const marginByCategory = new Map<string, { profitSum: number; revenueSum: number }>();
+          allData.forEach(d => {
+            const dateStr = new Date(d.date).toISOString().slice(0, 7);
+            if (!dateMatchesTimeRange(dateStr, interpretation.timeRange)) return;
+            const hierarchy = skuMap.get(d.skuId);
+            const cat = hierarchy?.category || "Unknown";
+            const rev = Number(d.revenue) || 0;
+            const pft = Number(d.profit) || 0;
+            if (!marginByCategory.has(cat)) marginByCategory.set(cat, { profitSum: 0, revenueSum: 0 });
+            const e = marginByCategory.get(cat)!;
+            e.profitSum += pft;
+            e.revenueSum += rev;
+          });
+          let maxMargin = -1;
+          for (const [cat, data] of marginByCategory) {
+            const margin = data.revenueSum > 0 ? (data.profitSum / data.revenueSum) * 100 : 0;
+            if (margin > maxMargin) { maxMargin = margin; topCategory = cat; }
           }
-          const entry = marginByCategory.get(categoryName)!;
-          entry.total += profitMargin;
-          entry.count += 1;
-        });
-        
-        // Find top category by average profit margin
-        let maxMargin = -1;
-        for (const [cat, data] of marginByCategory) {
-          const avgMargin = data.total / data.count;
-          if (avgMargin > maxMargin) {
-            maxMargin = avgMargin;
-            topCategory = cat;
+        } else {
+          // For revenue / cost: highest total sum across the time range
+          const totalByCategory = new Map<string, number>();
+          allData.forEach(d => {
+            const dateStr = new Date(d.date).toISOString().slice(0, 7);
+            if (!dateMatchesTimeRange(dateStr, interpretation.timeRange)) return;
+            const hierarchy = skuMap.get(d.skuId);
+            const cat = hierarchy?.category || "Unknown";
+            const val = Number(d[interpretation.metric as keyof typeof d]) || 0;
+            totalByCategory.set(cat, (totalByCategory.get(cat) || 0) + val);
+          });
+          let maxVal = -1;
+          for (const [cat, total] of totalByCategory) {
+            if (total > maxVal) { maxVal = total; topCategory = cat; }
           }
         }
       }
@@ -219,44 +226,45 @@ export async function registerRoutes(
       // Otherwise, aggregate as a single trend line
       let trendData: any[] = [];
       
-      if (isHighestQuery && interpretation.metric === "profit") {
-        // Build multi-series data by category
+      if (isHighestQuery) {
+        // Build multi-series trend data by category for any metric
+        const isProfit = interpretation.metric === "profit";
         const categoryTrendMap = new Map<string, Map<string, { value: number; count: number }>>();
-        
+
         allData.forEach(d => {
           const dateKey = new Date(d.date).toISOString().slice(0, 7);
           if (interpretation.timeRange && !dateMatchesTimeRange(dateKey, interpretation.timeRange)) return;
-          
+
           const hierarchy = skuMap.get(d.skuId);
           const categoryName = hierarchy?.category || "Unknown";
           const revenue = Number(d.revenue) || 0;
           const profit = Number(d.profit) || 0;
-          const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
-          
-          if (!categoryTrendMap.has(categoryName)) {
-            categoryTrendMap.set(categoryName, new Map());
-          }
+          const metricValue = isProfit
+            ? (revenue > 0 ? (profit / revenue) * 100 : 0)
+            : Number(d[interpretation.metric as keyof typeof d]) || 0;
+
+          if (!categoryTrendMap.has(categoryName)) categoryTrendMap.set(categoryName, new Map());
           const catMap = categoryTrendMap.get(categoryName)!;
-          if (!catMap.has(dateKey)) {
-            catMap.set(dateKey, { value: 0, count: 0 });
-          }
+          if (!catMap.has(dateKey)) catMap.set(dateKey, { value: 0, count: 0 });
           const entry = catMap.get(dateKey)!;
-          entry.value += profitMargin;
+          entry.value += metricValue;
           entry.count += 1;
         });
-        
-        // Format as multi-series data: [{date, Category1: 55, Category2: 45, ...}, ...]
+
         const dateSet = new Set<string>();
-        categoryTrendMap.forEach(catMap => {
-          catMap.forEach((_, dateKey) => dateSet.add(dateKey));
-        });
-        
+        categoryTrendMap.forEach(catMap => catMap.forEach((_, dk) => dateSet.add(dk)));
+
         const dates = Array.from(dateSet).sort();
         trendData = dates.map(dateKey => {
           const row: any = { date: dateKey };
           categoryTrendMap.forEach((catMap, categoryName) => {
             const entry = catMap.get(dateKey);
-            row[categoryName] = entry ? parseFloat((entry.value / entry.count).toFixed(2)) : 0;
+            // profit margin → average; revenue/cost → running sum
+            row[categoryName] = entry
+              ? isProfit
+                ? parseFloat((entry.value / entry.count).toFixed(2))
+                : parseFloat(entry.value.toFixed(2))
+              : 0;
           });
           return row;
         });
