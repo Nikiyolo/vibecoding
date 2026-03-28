@@ -4,6 +4,7 @@ import {
   Line, 
   BarChart, 
   Bar, 
+  Cell,
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -226,17 +227,19 @@ export function BreakdownChart({ data, title }: ChartProps) {
               }}
               cursor={{ fill: 'hsl(var(--muted))', opacity: 0.2 }}
             />
-            <Legend />
-            {processedData.map((_, index) => (
-              <Bar 
-                key={index}
-                dataKey={y}
-                fill={colorPalette[index % colorPalette.length]}
-                radius={[0, 8, 8, 0]}
-                animationDuration={1500}
-                name={processedData[index][x]}
-              />
-            ))}
+            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+            <Bar 
+              dataKey={y}
+              radius={[0, 8, 8, 0]}
+              animationDuration={1500}
+            >
+              {processedData.map((_, index) => (
+                <Cell 
+                  key={`cell-${index}`}
+                  fill={colorPalette[index % colorPalette.length]}
+                />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
