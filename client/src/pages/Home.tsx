@@ -190,14 +190,31 @@ export default function Home() {
             {(() => {
               const isCausalQuery = analyzeMutation.data.interpretation.intent === "root_cause";
               const hasBreakdown = analyzeMutation.data.breakdownData && analyzeMutation.data.breakdownData.length > 0;
+              const topCategory = (analyzeMutation.data as any).topCategory;
               
-              // Layout 1: Factual Query (Metric Only) - Just trend chart
+              // Layout 1: Factual Query (Metric Only) - Just trend chart, possibly with top category
               if (!isCausalQuery && !hasBreakdown) {
+                const isHighestQuery = topCategory !== null && topCategory !== undefined;
+                const metric = analyzeMutation.data.interpretation.metric;
+                const displayMetric = metric === "profit" ? "Profit Margin (%)" : metric.charAt(0).toUpperCase() + metric.slice(1);
+                
                 return (
-                  <div className="w-full">
+                  <div className="w-full flex flex-col gap-6">
+                    {isHighestQuery && (
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6">
+                        <p className="text-sm text-gray-600 uppercase font-semibold mb-2">Highest Category</p>
+                        <h2 className="text-3xl font-bold text-foreground">{topCategory}</h2>
+                        {metric === "profit" && (
+                          <p className="text-sm text-gray-600 mt-2">
+                            Shows {displayMetric} trend for {topCategory}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <div className="bg-white border border-gray-200 rounded-2xl p-6">
                       <h3 className="text-lg font-bold mb-6 text-foreground">
-                        {analyzeMutation.data.interpretation.metric.charAt(0).toUpperCase() + analyzeMutation.data.interpretation.metric.slice(1)} Trend
+                        {displayMetric} Trend
+                        {isHighestQuery && topCategory && ` - ${topCategory}`}
                       </h3>
                       <TrendChart 
                         data={analyzeMutation.data.trendData} 
