@@ -337,167 +337,229 @@ export async function registerRoutes(
       Metric: ${interpretation.metric}, TimeRange: ${interpretation.timeRange}, Intent: ${interpretation.intent}.`;
       
       if (interpretation.intent === 'root_cause') {
-        // Get first and last month as strings (YYYY-MM format)
-        const firstMonthStr = trendData[0]?.date;
-        const lastMonthStr = trendData[trendData.length - 1]?.date;
-        
-        // Helper to get YYYY-MM from date
-        const getDateMonth = (date: any) => {
-          if (date instanceof Date) {
-            return date.toISOString().slice(0, 7);
-          }
-          return String(date).slice(0, 7);
-        };
-        
-        // Analyze category profit margin performance
-        const categoryPerformance = new Map();
+        // Compare current period vs previous period using the same resolution
+        // used for the causal cross table — works for "last month", "last quarter", etc.
+        const { currentKeys: rcCurKeys, previousKeys: rcPrevKeys } =
+          resolveCausalPeriods(interpretation.timeRange);
+
+        const rcMk = interpretation.metric as "revenue" | "cost" | "profit";
+        const rcIsProfit = rcMk === "profit";
+
+        // Aggregate by category and region for both periods
+        const rcCatCur  = new Map<string, { m: number; r: number }>();
+        const rcCatPrev = new Map<string, { m: number; r: number }>();
+        const rcRegCur  = new Map<string, { m: number; r: number }>();
+        const rcRegPrev = new Map<string, { m: number; r: number }>();
+
         allData.forEach(d => {
-          const hierarchy = skuMap.get(d.skuId);
-          const key = hierarchy?.category || "Unknown";
-          const dateMonth = getDateMonth(d.date);
-          const revenue = Number(d.revenue) || 0;
-          const profit = Number(d.profit) || 0;
-          const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
-          
-          if (!categoryPerformance.has(key)) {
-            categoryPerformance.set(key, { first: 0, count1: 0, last: 0, count2: 0 });
-          }
-          const perf = categoryPerformance.get(key);
-          
-          if (dateMonth === firstMonthStr) {
-            perf.first += profitMargin;
-            perf.count1 += 1;
-          }
-          if (dateMonth === lastMonthStr) {
-            perf.last += profitMargin;
-            perf.count2 += 1;
-          }
+          const dk = new Date(d.date).toISOString().slice(0, 7);
+          const isCur  = rcCurKeys.includes(dk);
+          const isPrev = rcPrevKeys.includes(dk);
+          if (!isCur && !isPrev) return;
+
+          const cat = skuMap.get(d.skuId)?.category || "Unknown";
+          const reg = d.region || "Unknown";
+          const rev = Number(d.revenue) || 0;
+          const mv  = Number(d[rcMk]) || 0;
+
+          const cm = isCur ? rcCatCur : rcCatPrev;
+          if (!cm.has(cat)) cm.set(cat, { m: 0, r: 0 });
+          cm.get(cat)!.m += mv; cm.get(cat)!.r += rev;
+
+          const rm = isCur ? rcRegCur : rcRegPrev;
+          if (!rm.has(reg)) rm.set(reg, { m: 0, r: 0 });
+          rm.get(reg)!.m += mv; rm.get(reg)!.r += rev;
         });
-        
-        // Calculate average profit margin change for each category
-        const productImpact = Array.from(categoryPerformance.entries())
-          .map(([name, perf]) => {
-            const firstMargin = perf.count1 > 0 ? perf.first / perf.count1 : 0;
-            const lastMargin = perf.count2 > 0 ? perf.last / perf.count2 : 0;
-            return {
-              name,
-              first: firstMargin,
-              last: lastMargin,
-              change: firstMargin > 0 ? ((firstMargin - lastMargin) / firstMargin) * 100 : 0
-            };
+
+        const rcCalc = (e: { m: number; r: number }) =>
+          rcIsProfit ? (e.r > 0 ? (e.m / e.r) * 100 : 0) : e.m;
+
+        const rcPctChange = (cur: number, prev: number) =>
+          prev !== 0 ? ((cur - prev) / Math.abs(prev)) * 100 : 0;
+
+        const productImpact = Array.from(rcCatCur.keys())
+          .map(name => {
+            const curVal  = rcCalc(rcCatCur.get(name)!);
+            const prevEntry = rcCatPrev.get(name);
+            const prevVal = prevEntry ? rcCalc(prevEntry) : 0;
+            return { name, curVal, prevVal, change: rcPctChange(curVal, prevVal) };
           })
-          .filter(p => p.first > 0 && Math.abs(p.change) > 0.5) // Only include meaningful changes
+          .filter(p => Math.abs(p.change) > 0.1)
           .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
-        
-        // Analyze region profit margin performance
-        const regionPerformance = new Map();
-        allData.forEach(d => {
-          const key = d.region;
-          const dateMonth = getDateMonth(d.date);
-          const revenue = Number(d.revenue) || 0;
-          const profit = Number(d.profit) || 0;
-          const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
-          
-          if (!regionPerformance.has(key)) {
-            regionPerformance.set(key, { first: 0, count1: 0, last: 0, count2: 0 });
-          }
-          const perf = regionPerformance.get(key);
-          
-          if (dateMonth === firstMonthStr) {
-            perf.first += profitMargin;
-            perf.count1 += 1;
-          }
-          if (dateMonth === lastMonthStr) {
-            perf.last += profitMargin;
-            perf.count2 += 1;
-          }
-        });
-        
-        // Calculate average profit margin change for regions
-        const regionImpact = Array.from(regionPerformance.entries())
-          .map(([name, perf]) => {
-            const firstMargin = perf.count1 > 0 ? perf.first / perf.count1 : 0;
-            const lastMargin = perf.count2 > 0 ? perf.last / perf.count2 : 0;
-            return {
-              name,
-              first: firstMargin,
-              last: lastMargin,
-              change: firstMargin > 0 ? ((firstMargin - lastMargin) / firstMargin) * 100 : 0
-            };
+
+        const regionImpact = Array.from(rcRegCur.keys())
+          .map(name => {
+            const curVal  = rcCalc(rcRegCur.get(name)!);
+            const prevEntry = rcRegPrev.get(name);
+            const prevVal = prevEntry ? rcCalc(prevEntry) : 0;
+            return { name, curVal, prevVal, change: rcPctChange(curVal, prevVal) };
           })
-          .filter(r => r.first > 0 && Math.abs(r.change) > 0.5) // Only include meaningful changes
+          .filter(r => Math.abs(r.change) > 0.1)
           .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
-        
-        // Build root causes array with top contributors - focusing on profit margin
+
         if (productImpact.length > 0) {
           rootCauses.push({
             dimension: "category",
             topContributor: productImpact[0].name,
-            changePercentage: -Math.round(productImpact[0].change * 10) / 10
+            changePercentage: parseFloat(productImpact[0].change.toFixed(1)),
           });
         }
         if (regionImpact.length > 0) {
           rootCauses.push({
             dimension: "region",
             topContributor: regionImpact[0].name,
-            changePercentage: -Math.round(regionImpact[0].change * 10) / 10
+            changePercentage: parseFloat(regionImpact[0].change.toFixed(1)),
           });
-        }
-        
-        const mainCause = rootCauses[0];
-        if (mainCause) {
-          explanationPrompt += `\nThe decline was primarily driven by ${mainCause.topContributor} which dropped by ${Math.abs(mainCause.changePercentage)}%.`;
-          if (rootCauses[1]) {
-            explanationPrompt += ` Additionally, the ${rootCauses[1].dimension} dimension shows ${rootCauses[1].topContributor} also contributed with a ${Math.abs(rootCauses[1].changePercentage)}% decline.`;
-          }
-          explanationPrompt += "\nProvide a brief summary with actionable recommendations to address this decline.";
         }
       }
       
-      // Generate three separate AI descriptions
-      const trendPrompt = `Based on this data: ${explanationPrompt}
-      
-      Provide a brief 1-2 sentence description of the overall trend (e.g., declining, growing, stable). Focus on what happened, not why.`;
-      
-      const rootCausesPrompt = `Based on this data: ${explanationPrompt}
-      
-      The top contributors to the change are: ${rootCauses.map(rc => `${rc.topContributor} (${rc.dimension}, ${Math.abs(rc.changePercentage)}%)`).join(', ')}.
-      
-      Provide a brief 2-3 sentence analysis of why these specific products and regions are underperforming. Include the percentage impacts.`;
-      
-      const suggestionsPrompt = `Based on this data: ${explanationPrompt}
-      
-      The decline was driven by: ${rootCauses.map(rc => rc.topContributor).join(', ')}.
-      
-      Provide 2-3 specific, actionable recommendations to address this decline. Be concrete and practical.`;
+      // ── Build a compact cross-table snapshot for the AI prompts ─────────────
+      // We compute category × region totals for the query period (and previous
+      // period for causal queries) so the AI can reference real numbers.
+      const fmt$ = (v: number) => v >= 1_000_000 ? `$${(v/1_000_000).toFixed(1)}M`
+                                  : v >= 1_000 ? `$${(v/1_000).toFixed(1)}k`
+                                  : `$${v.toFixed(0)}`;
+      const fmtPct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+
+      // Aggregate category totals for current period
+      const ctCurrent = new Map<string, { m: number; r: number }>();
+      const ctPrev    = new Map<string, { m: number; r: number }>();
+      const ctRegCur  = new Map<string, { m: number; r: number }>();
+      const ctRegPrev = new Map<string, { m: number; r: number }>();
+      const mk2 = interpretation.metric as "revenue" | "cost" | "profit";
+      const isP2 = interpretation.metric === "profit";
+
+      // For causal: use the already-resolved period keys
+      let curKeys2: string[] = [];
+      let prevKeys2: string[] = [];
+      let curLabel2 = "";
+      let prevLabel2 = "";
+
+      if (interpretation.intent === "root_cause") {
+        const resolved = resolveCausalPeriods(interpretation.timeRange);
+        curKeys2 = resolved.currentKeys;
+        prevKeys2 = resolved.previousKeys;
+        curLabel2 = resolved.currentLabel;
+        prevLabel2 = resolved.previousLabel;
+      }
+
+      allData.forEach(d => {
+        const dk = new Date(d.date).toISOString().slice(0, 7);
+        const cat = skuMap.get(d.skuId)?.category || "Unknown";
+        const reg = d.region || "Unknown";
+        const rev = Number(d.revenue) || 0;
+        const metricRaw = Number(d[mk2]) || 0;
+
+        if (interpretation.intent === "root_cause") {
+          const isCur  = curKeys2.includes(dk);
+          const isPrev = prevKeys2.includes(dk);
+          if (isCur) {
+            if (!ctCurrent.has(cat)) ctCurrent.set(cat, { m: 0, r: 0 });
+            const e = ctCurrent.get(cat)!; e.m += metricRaw; e.r += rev;
+            if (!ctRegCur.has(reg)) ctRegCur.set(reg, { m: 0, r: 0 });
+            const er = ctRegCur.get(reg)!; er.m += metricRaw; er.r += rev;
+          }
+          if (isPrev) {
+            if (!ctPrev.has(cat)) ctPrev.set(cat, { m: 0, r: 0 });
+            const e = ctPrev.get(cat)!; e.m += metricRaw; e.r += rev;
+            if (!ctRegPrev.has(reg)) ctRegPrev.set(reg, { m: 0, r: 0 });
+            const er = ctRegPrev.get(reg)!; er.m += metricRaw; er.r += rev;
+          }
+        } else {
+          if (interpretation.timeRange && !dateMatchesTimeRange(dk, interpretation.timeRange)) return;
+          if (!ctCurrent.has(cat)) ctCurrent.set(cat, { m: 0, r: 0 });
+          const e = ctCurrent.get(cat)!; e.m += metricRaw; e.r += rev;
+          if (!ctRegCur.has(reg)) ctRegCur.set(reg, { m: 0, r: 0 });
+          const er = ctRegCur.get(reg)!; er.m += metricRaw; er.r += rev;
+        }
+      });
+
+      const calcDisplay = (e: { m: number; r: number }) =>
+        isP2 ? e.r > 0 ? (e.m / e.r) * 100 : 0 : e.m;
+
+      let crossTableSummary = "";
+      if (interpretation.intent === "root_cause" && ctCurrent.size > 0) {
+        const catLines = Array.from(ctCurrent.keys()).sort().map(cat => {
+          const cur = ctCurrent.get(cat)!;
+          const prev = ctPrev.get(cat);
+          const curVal = calcDisplay(cur);
+          const prevVal = prev ? calcDisplay(prev) : null;
+          const chg = prevVal && prevVal !== 0 ? ((curVal - prevVal) / Math.abs(prevVal)) * 100 : null;
+          const curStr = isP2 ? `${curVal.toFixed(1)}%` : fmt$(curVal);
+          const prevStr = prev ? (isP2 ? `${calcDisplay(prev).toFixed(1)}%` : fmt$(calcDisplay(prev))) : "–";
+          return `  • ${cat}: ${curStr} vs ${prevStr}${chg !== null ? ` (${fmtPct(chg)})` : ""}`;
+        }).join("\n");
+
+        const regLines = Array.from(ctRegCur.keys()).sort().map(reg => {
+          const cur = ctRegCur.get(reg)!;
+          const prev = ctRegPrev.get(reg);
+          const curVal = calcDisplay(cur);
+          const prevVal = prev ? calcDisplay(prev) : null;
+          const chg = prevVal && prevVal !== 0 ? ((curVal - prevVal) / Math.abs(prevVal)) * 100 : null;
+          const curStr = isP2 ? `${curVal.toFixed(1)}%` : fmt$(curVal);
+          const prevStr = prev ? (isP2 ? `${calcDisplay(prev).toFixed(1)}%` : fmt$(calcDisplay(prev))) : "–";
+          return `  • ${reg}: ${curStr} vs ${prevStr}${chg !== null ? ` (${fmtPct(chg)})` : ""}`;
+        }).join("\n");
+
+        crossTableSummary = `\nPeriod comparison (${curLabel2} vs ${prevLabel2}):\nBy product category:\n${catLines}\nBy region:\n${regLines}`;
+      } else if (ctCurrent.size > 0) {
+        const catLines = Array.from(ctCurrent.keys()).sort().map(cat => {
+          const val = calcDisplay(ctCurrent.get(cat)!);
+          return `  • ${cat}: ${isP2 ? `${val.toFixed(1)}%` : fmt$(val)}`;
+        }).join("\n");
+        crossTableSummary = `\nBreakdown by product category:\n${catLines}`;
+      }
+
+      // ── Prompts ─────────────────────────────────────────────────────────────
+      const analysisSystemPrompt = "You are a concise business analyst. Reply in plain English. No bullet intro headers, no markdown. Use numbers from the data.";
+
+      const trendPrompt = `Query: "${query}"
+Metric: ${interpretation.metric}, Period: ${interpretation.timeRange}.${crossTableSummary}
+
+Write ONE short sentence (max 25 words) summarising what happened to ${interpretation.metric} in this period. State the direction and rough magnitude. No recommendations.`;
+
+      const rootCausesPrompt = `Query: "${query}"
+Metric: ${interpretation.metric}, Period: ${interpretation.timeRange}.${crossTableSummary}
+Top contributors: ${rootCauses.map(rc => `${rc.topContributor} (${rc.dimension}, ${fmtPct(-rc.changePercentage)})`).join("; ")}.
+
+Write 2–3 short sentences identifying the main drivers. Reference the actual numbers from the data above. Be specific about which category or region is the largest contributor and by how much.`;
+
+      const suggestionsPrompt = `Query: "${query}"
+Metric: ${interpretation.metric}, Period: ${interpretation.timeRange}.${crossTableSummary}
+Top contributors: ${rootCauses.map(rc => rc.topContributor).join(", ")}.
+
+Give exactly 3 bullet-point recommendations, each starting with "• ". Max 20 words per bullet. Make each recommendation specific and actionable based on the data above.`;
 
       const [trendResponse, causesResponse, suggestionsResponse] = await Promise.all([
         openai.chat.completions.create({
           model: "gpt-5.1",
           messages: [
-            { role: "system", content: "You are a friendly business analyst. Be concise." },
+            { role: "system", content: analysisSystemPrompt },
             { role: "user", content: trendPrompt }
-          ]
+          ],
+          max_completion_tokens: 80,
         }),
         openai.chat.completions.create({
           model: "gpt-5.1",
           messages: [
-            { role: "system", content: "You are a friendly business analyst. Be concise and include specific percentages." },
+            { role: "system", content: analysisSystemPrompt },
             { role: "user", content: rootCausesPrompt }
-          ]
+          ],
+          max_completion_tokens: 150,
         }),
         openai.chat.completions.create({
           model: "gpt-5.1",
           messages: [
-            { role: "system", content: "You are a friendly business analyst. Provide actionable, specific recommendations." },
+            { role: "system", content: analysisSystemPrompt },
             { role: "user", content: suggestionsPrompt }
-          ]
+          ],
+          max_completion_tokens: 150,
         })
       ]);
 
-      const trendDescription = trendResponse.choices[0]?.message?.content || "Unable to generate trend description.";
-      const rootCausesDescription = causesResponse.choices[0]?.message?.content || "Unable to generate root causes analysis.";
-      const suggestions = suggestionsResponse.choices[0]?.message?.content || "Unable to generate suggestions.";
+      const trendDescription = trendResponse.choices[0]?.message?.content?.trim() || "Unable to generate trend description.";
+      const rootCausesDescription = causesResponse.choices[0]?.message?.content?.trim() || "Unable to generate root causes analysis.";
+      const suggestions = suggestionsResponse.choices[0]?.message?.content?.trim() || "Unable to generate suggestions.";
 
       // Build cross-table: category (rows) × region (columns)
       const crossMap = new Map<string, Map<string, { metricSum: number; revenueSum: number; count: number }>>();
