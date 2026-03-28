@@ -526,19 +526,14 @@ Metric: ${interpretation.metric}, Period: ${interpretation.timeRange}.${crossTab
 
 Write ONE short sentence (max 25 words) summarising what happened to ${interpretation.metric} in this period. State the direction and rough magnitude. No recommendations.`;
 
-      const rootCausesPrompt = `Query: "${query}"
-Metric: ${interpretation.metric}, Period: ${interpretation.timeRange}.${crossTableSummary}
-Top contributors: ${rootCauses.map(rc => `${rc.topContributor} (${rc.dimension}, ${fmtPct(-rc.changePercentage)})`).join("; ")}.
-
-Write 2–3 short sentences identifying the main drivers. Reference the actual numbers from the data above. Be specific about which category or region is the largest contributor and by how much.`;
-
       const suggestionsPrompt = `Query: "${query}"
 Metric: ${interpretation.metric}, Period: ${interpretation.timeRange}.${crossTableSummary}
-Top contributors: ${rootCauses.map(rc => rc.topContributor).join(", ")}.
+Top contributors: ${rootCauses.map(rc => rc.topContributor).join(", ") || "all categories"}.
 
 Give exactly 3 bullet-point recommendations, each starting with "• ". Max 20 words per bullet. Make each recommendation specific and actionable based on the data above.`;
 
-      const [trendResponse, causesResponse, suggestionsResponse] = await Promise.all([
+      // Trend and suggestions run in parallel — both are reliable
+      const [trendResponse, suggestionsResponse] = await Promise.all([
         openai.chat.completions.create({
           model: "gpt-5.1",
           messages: [
@@ -551,14 +546,6 @@ Give exactly 3 bullet-point recommendations, each starting with "• ". Max 20 w
           model: "gpt-5.1",
           messages: [
             { role: "system", content: analysisSystemPrompt },
-            { role: "user", content: rootCausesPrompt }
-          ],
-          max_completion_tokens: 150,
-        }),
-        openai.chat.completions.create({
-          model: "gpt-5.1",
-          messages: [
-            { role: "system", content: analysisSystemPrompt },
             { role: "user", content: suggestionsPrompt }
           ],
           max_completion_tokens: 150,
@@ -566,8 +553,64 @@ Give exactly 3 bullet-point recommendations, each starting with "• ". Max 20 w
       ]);
 
       const trendDescription = trendResponse.choices[0]?.message?.content?.trim() || "Unable to generate trend description.";
-      const rootCausesDescription = causesResponse.choices[0]?.message?.content?.trim() || "Unable to generate root causes analysis.";
       const suggestions = suggestionsResponse.choices[0]?.message?.content?.trim() || "Unable to generate suggestions.";
+
+      // Root causes description: only generated when root causes exist.
+      // Try AI first; fall back to a deterministic description from structured data.
+      let rootCausesDescription = "";
+      if (rootCauses.length > 0) {
+        const rcPrompt = `Query: "${query}"
+Metric: ${interpretation.metric}, Period: ${interpretation.timeRange}.${crossTableSummary}
+Top contributors by change: ${rootCauses.map(rc => `${rc.topContributor} (${rc.dimension}: ${rc.changePercentage >= 0 ? "+" : ""}${rc.changePercentage}%)`).join("; ")}.
+
+Write 2–3 short sentences identifying the main drivers of this change. Reference specific dollar amounts or percentages from the data above.`;
+
+        try {
+          const causesResponse = await openai.chat.completions.create({
+            model: "gpt-5.1",
+            messages: [
+              { role: "system", content: analysisSystemPrompt },
+              { role: "user", content: rcPrompt }
+            ],
+            max_completion_tokens: 200,
+          });
+          rootCausesDescription = causesResponse.choices[0]?.message?.content?.trim() || "";
+        } catch (_) {
+          // Handled by fallback below
+        }
+
+        // Deterministic fallback: build from the structured data we already computed
+        if (!rootCausesDescription) {
+          const parts: string[] = [];
+          for (const rc of rootCauses) {
+            const sign = rc.changePercentage >= 0 ? "+" : "";
+            if (rc.dimension === "category") {
+              const cur = ctCurrent.get(rc.topContributor);
+              const prev = ctPrev.get(rc.topContributor);
+              if (cur && prev) {
+                const curV = calcDisplay(cur), prevV = calcDisplay(prev);
+                const curStr = isP2 ? `${curV.toFixed(1)}%` : fmt$(curV);
+                const prevStr = isP2 ? `${prevV.toFixed(1)}%` : fmt$(prevV);
+                parts.push(`${rc.topContributor} had the largest category impact, moving from ${prevStr} to ${curStr} (${sign}${rc.changePercentage}%)`);
+              } else {
+                parts.push(`${rc.topContributor} (category) changed by ${sign}${rc.changePercentage}%`);
+              }
+            } else {
+              const cur = ctRegCur.get(rc.topContributor);
+              const prev = ctRegPrev.get(rc.topContributor);
+              if (cur && prev) {
+                const curV = calcDisplay(cur), prevV = calcDisplay(prev);
+                const curStr = isP2 ? `${curV.toFixed(1)}%` : fmt$(curV);
+                const prevStr = isP2 ? `${prevV.toFixed(1)}%` : fmt$(prevV);
+                parts.push(`${rc.topContributor} was the most-impacted region, moving from ${prevStr} to ${curStr} (${sign}${rc.changePercentage}%)`);
+              } else {
+                parts.push(`${rc.topContributor} (region) changed by ${sign}${rc.changePercentage}%`);
+              }
+            }
+          }
+          rootCausesDescription = parts.join(". ") + ".";
+        }
+      }
 
       // Build cross-table: category (rows) × region (columns)
       const crossMap = new Map<string, Map<string, { metricSum: number; revenueSum: number; count: number }>>();
