@@ -104,33 +104,71 @@ export async function registerRoutes(
         if (!timeRange) return true;
         const year = dateStr.slice(0, 4);
         const month = dateStr.slice(5, 7);
-        const lowerTimeRange = timeRange.toLowerCase();
-        
-        // Check for year (e.g., "2023", "2024")
-        if (/^\d{4}$/.test(timeRange)) {
-          return year === timeRange;
+        const lower = timeRange.toLowerCase();
+
+        // ── Relative time ranges (resolved against current date) ──────────────
+        const now = new Date();
+        const ny = now.getFullYear();
+        const nm = now.getMonth(); // 0-based
+
+        const isoKey = (y: number, m: number) => new Date(y, m, 1).toISOString().slice(0, 7);
+
+        if (lower.includes("last month") || lower.includes("previous month")) {
+          return dateStr === isoKey(ny, nm - 1);
         }
-        
-        if (lowerTimeRange.includes("q1")) return ["01", "02", "03"].includes(month);
-        if (lowerTimeRange.includes("q2")) return ["04", "05", "06"].includes(month);
-        if (lowerTimeRange.includes("q3")) return ["07", "08", "09"].includes(month);
-        if (lowerTimeRange.includes("q4")) return ["10", "11", "12"].includes(month);
-        
-        // If specific month mentioned, match it
-        if (lowerTimeRange.includes("january") || lowerTimeRange.includes("jan")) return month === "01";
-        if (lowerTimeRange.includes("february") || lowerTimeRange.includes("feb")) return month === "02";
-        if (lowerTimeRange.includes("march") || lowerTimeRange.includes("mar")) return month === "03";
-        if (lowerTimeRange.includes("april") || lowerTimeRange.includes("apr")) return month === "04";
-        if (lowerTimeRange.includes("may")) return month === "05";
-        if (lowerTimeRange.includes("june") || lowerTimeRange.includes("jun")) return month === "06";
-        if (lowerTimeRange.includes("july") || lowerTimeRange.includes("jul")) return month === "07";
-        if (lowerTimeRange.includes("august") || lowerTimeRange.includes("aug")) return month === "08";
-        if (lowerTimeRange.includes("september") || lowerTimeRange.includes("sep")) return month === "09";
-        if (lowerTimeRange.includes("october") || lowerTimeRange.includes("oct")) return month === "10";
-        if (lowerTimeRange.includes("november") || lowerTimeRange.includes("nov")) return month === "11";
-        if (lowerTimeRange.includes("december") || lowerTimeRange.includes("dec")) return month === "12";
-        
-        return true; // Default to all if no time range matched
+        if (lower.includes("this month") || lower.includes("current month")) {
+          return dateStr === isoKey(ny, nm);
+        }
+        if (lower.includes("last quarter") || lower.includes("previous quarter")) {
+          const curQStart = Math.floor(nm / 3) * 3;
+          const lqStart = new Date(ny, curQStart - 3, 1);
+          const lqKeys = [0, 1, 2].map(i => isoKey(lqStart.getFullYear(), lqStart.getMonth() + i));
+          return lqKeys.includes(dateStr);
+        }
+        if (lower.includes("this quarter") || lower.includes("current quarter")) {
+          const curQStart = Math.floor(nm / 3) * 3;
+          const keys = [0, 1, 2].map(i => isoKey(ny, curQStart + i));
+          return keys.includes(dateStr);
+        }
+        if (lower.includes("last year") || lower.includes("previous year")) {
+          return year === String(ny - 1);
+        }
+        if (lower.includes("this year") || lower.includes("current year")) {
+          return year === String(ny);
+        }
+
+        // ── Absolute time ranges ───────────────────────────────────────────────
+        // Specific 4-digit year (e.g., "2024")
+        if (/^\d{4}$/.test(timeRange)) return year === timeRange;
+
+        // Year mentioned inline (e.g., "Q2 2024", "March 2024")
+        const yearInRange = timeRange.match(/\b(20\d{2})\b/);
+        const rangeYear = yearInRange ? yearInRange[1] : null;
+
+        if (lower.includes("q1")) return ["01", "02", "03"].includes(month) && (!rangeYear || year === rangeYear);
+        if (lower.includes("q2")) return ["04", "05", "06"].includes(month) && (!rangeYear || year === rangeYear);
+        if (lower.includes("q3")) return ["07", "08", "09"].includes(month) && (!rangeYear || year === rangeYear);
+        if (lower.includes("q4")) return ["10", "11", "12"].includes(month) && (!rangeYear || year === rangeYear);
+
+        // Named months — respect year qualifier if present
+        const matchMonth = (m: string) => month === m && (!rangeYear || year === rangeYear);
+        if (lower.includes("january") || lower.includes("jan")) return matchMonth("01");
+        if (lower.includes("february") || lower.includes("feb")) return matchMonth("02");
+        if (lower.includes("march") || lower.includes("mar")) return matchMonth("03");
+        if (lower.includes("april") || lower.includes("apr")) return matchMonth("04");
+        if (lower.includes("may")) return matchMonth("05");
+        if (lower.includes("june") || lower.includes("jun")) return matchMonth("06");
+        if (lower.includes("july") || lower.includes("jul")) return matchMonth("07");
+        if (lower.includes("august") || lower.includes("aug")) return matchMonth("08");
+        if (lower.includes("september") || lower.includes("sep")) return matchMonth("09");
+        if (lower.includes("october") || lower.includes("oct")) return matchMonth("10");
+        if (lower.includes("november") || lower.includes("nov")) return matchMonth("11");
+        if (lower.includes("december") || lower.includes("dec")) return matchMonth("12");
+
+        // Year-only mentioned without isolated match (e.g. "year 2025")
+        if (rangeYear) return year === rangeYear;
+
+        return true; // Default: include all if no pattern matched
       };
       
       // Detect dimension from query (by region, by category, by product, etc.)
@@ -258,51 +296,40 @@ export async function registerRoutes(
       
       // Detect breakdown dimension and aggregate data accordingly
       const breakdownDimension = detectBreakdownDimension(query);
-      const breakdownMap = new Map();
-      
+      const breakdownMap = new Map<string, { name: string; metricSum: number; revenueSum: number }>();
+
       allData.forEach(d => {
         const dateStr = new Date(d.date).toISOString().slice(0, 7);
-        
+
         // Filter by time range
         if (interpretation.timeRange && !dateMatchesTimeRange(dateStr, interpretation.timeRange)) return;
-        
+
         const hierarchy = skuMap.get(d.skuId);
         const revenue = Number(d.revenue) || 0;
         const cost = Number(d.cost) || 0;
         const profit = Number(d.profit) || 0;
-        
-        // Get the dimension value to group by
-        let dimensionValue = "Unknown";
-        if (breakdownDimension === "region") {
-          dimensionValue = d.region || "Unknown";
-        } else {
-          dimensionValue = hierarchy?.category || "Unknown";
-        }
-        
-        // Calculate the metric value
-        let metricValue = 0;
-        if (interpretation.metric === "profit") {
-          metricValue = revenue > 0 ? (profit / revenue) * 100 : 0; // profit margin %
-        } else if (interpretation.metric === "cost") {
-          metricValue = Number(cost);
-        } else {
-          metricValue = Number(revenue);
-        }
-        
+
+        const dimensionValue = breakdownDimension === "region"
+          ? (d.region || "Unknown")
+          : (hierarchy?.category || "Unknown");
+
         if (!breakdownMap.has(dimensionValue)) {
-          breakdownMap.set(dimensionValue, { name: dimensionValue, value: 0, count: 0 });
+          breakdownMap.set(dimensionValue, { name: dimensionValue, metricSum: 0, revenueSum: 0 });
         }
         const entry = breakdownMap.get(dimensionValue)!;
-        entry.value += metricValue;
-        entry.count += 1;
+        // Accumulate raw metric sum and revenue sum for weighted profit margin later
+        entry.metricSum += interpretation.metric === "profit" ? profit
+          : interpretation.metric === "cost" ? cost
+          : revenue;
+        entry.revenueSum += revenue;
       });
-      
-      // Calculate average for each dimension value
+
+      // For revenue/cost: return total. For profit margin: weighted average (profitSum / revenueSum).
       const breakdownData = Array.from(breakdownMap.values()).map(item => ({
         name: item.name,
-        value: interpretation.metric === "profit" && item.count > 0
-          ? parseFloat((item.value / item.count).toFixed(2))
-          : parseFloat((item.value / item.count).toFixed(2))
+        value: interpretation.metric === "profit"
+          ? parseFloat((item.revenueSum > 0 ? (item.metricSum / item.revenueSum) * 100 : 0).toFixed(2))
+          : parseFloat(item.metricSum.toFixed(2)),
       }));
       
       let rootCauses = [];
