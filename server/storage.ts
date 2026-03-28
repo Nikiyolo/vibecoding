@@ -115,57 +115,67 @@ export class DatabaseStorage implements IStorage {
   
   async seedMetrics() {
     await this.seedProductHierarchy();
-    // Clear existing metrics to reseed with new data
-    await db.delete(performanceMetrics);
+    // Only seed if the table is empty — never wipe existing data on restart
     const existing = await this.getMetrics();
     if (existing.length > 0) return;
-    
+
     const allSkus = await db.select().from(skus);
     if (allSkus.length === 0) return;
 
     const regions = ["North America", "Europe", "Asia"];
     const baseDate = new Date();
     baseDate.setMonth(baseDate.getMonth() - 12);
-    
+
+    // Deterministic PRNG — same seed always produces the same float in [0, 1]
+    // so values never change between restarts.
+    const prng = (seed: number): number => {
+      let s = seed ^ 0xdeadbeef;
+      s = Math.imul(s ^ (s >>> 16), 0x45d9f3b);
+      s = Math.imul(s ^ (s >>> 13), 0x1b873593);
+      s = s ^ (s >>> 16);
+      return (s >>> 0) / 0xffffffff;
+    };
+
     for (let i = 0; i < 12; i++) {
       const date = new Date(baseDate);
       date.setMonth(baseDate.getMonth() + i);
-      
-      for (const sku of allSkus) {
-        for (const region of regions) {
+
+      for (let si = 0; si < allSkus.length; si++) {
+        const sku = allSkus[si];
+        for (let ri = 0; ri < regions.length; ri++) {
+          const region = regions[ri];
           const baseRevenue = 1500 - (i * 80);
-          const variance = Math.random() * 150 - 75;
-          const skuMultiplier = 0.8 + Math.random() * 0.6;
-          const regionMultiplier = region === "Europe" ? 0.85 : (region === "Asia" ? 1.0 : 1.15);
-          
+
+          // Seeds are fully determined by (month, SKU index, region index)
+          const seed = i * 10000 + si * 100 + ri;
+          const variance = prng(seed)       * 150 - 75;   // [-75, +75]
+          const skuMultiplier = 0.8 + prng(seed + 50000) * 0.6; // [0.8, 1.4]
+          const regionMultiplier =
+            region === "Europe" ? 0.85 : region === "Asia" ? 1.0 : 1.15;
+
           const revenue = Math.max(100, (baseRevenue + variance) * skuMultiplier * regionMultiplier);
-          
-          // Variable cost ratio by SKU to create different profit margins
-          // Electronics: 45% cost = 55% margin
-          // Furniture: 55% cost = 45% margin  
-          // Software: 35% cost = 65% margin
-          let costRatio = 0.55; // default
+
+          // Cost ratio by category — Electronics 45%, Furniture 55%, Software 35%
+          let costRatio = 0.55;
           if (sku.sku.includes("CHAIR") || sku.sku.includes("DESK") || sku.sku.includes("CUSH")) {
-            costRatio = 0.55; // Furniture: 45% margin
+            costRatio = 0.55;
           } else if (sku.sku.includes("OFFICE") || sku.sku.includes("IDE") || sku.sku.includes("PM") || sku.sku.includes("VCS")) {
-            costRatio = 0.35; // Software: 65% margin
+            costRatio = 0.35;
           } else {
-            costRatio = 0.45; // Electronics: 55% margin
+            costRatio = 0.45;
           }
-          
-          // Add variation by month (margins decline over time)
-          costRatio += (i * 0.01); // Cost increases 1% per month
-          
+          costRatio += i * 0.01; // margins tighten slightly over time
+
           const cost = revenue * costRatio;
           const profit = revenue - cost;
-          
+
           await this.createMetric({
             date,
             skuId: sku.id,
             region,
             revenue: revenue.toFixed(2),
             cost: cost.toFixed(2),
-            profit: profit.toFixed(2)
+            profit: profit.toFixed(2),
           });
         }
       }
