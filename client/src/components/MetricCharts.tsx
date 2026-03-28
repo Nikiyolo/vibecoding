@@ -157,11 +157,23 @@ export function BreakdownChart({ data, title }: ChartProps) {
 
   const { x, y } = detectAxes(data);
   
-  // Ensure data values are numbers
-  const processedData = data.map(item => ({
-    ...item,
-    [y]: Number(item[y as keyof typeof item]) || 0
-  }));
+  // Ensure data values are numbers and sort by value descending
+  const processedData = data
+    .map(item => ({
+      ...item,
+      [y]: Number(item[y as keyof typeof item]) || 0
+    }))
+    .sort((a, b) => Number(b[y]) - Number(a[y]));
+
+  // Color palette for different dimension values
+  const colorPalette = [
+    'hsl(220 90% 60%)',      // Blue
+    'hsl(142 71% 45%)',      // Green
+    'hsl(0 84% 60%)',        // Red
+    'hsl(38 92% 50%)',       // Orange
+    'hsl(280 85% 55%)',      // Purple
+    'hsl(200 80% 50%)',      // Cyan
+  ];
 
   return (
     <div className="w-full flex flex-col h-full">
@@ -170,27 +182,30 @@ export function BreakdownChart({ data, title }: ChartProps) {
         <ResponsiveContainer width="100%" height={300}>
           <BarChart 
             data={processedData}
-            margin={{ top: 10, right: 30, left: 10, bottom: 60 }}
+            layout="vertical"
+            margin={{ top: 10, right: 30, left: 120, bottom: 20 }}
           >
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
             <XAxis 
-              dataKey={x} 
-              axisLine={false} 
-              tickLine={false} 
-              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-              angle={-45}
-              textAnchor="end"
-              height={80}
-            />
-            <YAxis 
+              type="number"
               axisLine={false} 
               tickLine={false} 
               tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
               tickFormatter={(value) => {
                 if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
                 if (value >= 1000) return `$${(value / 1000).toFixed(0)}k`;
+                // For percentages
+                if (value < 100 && value > 0) return `${value.toFixed(0)}%`;
                 return `$${value}`;
               }}
+            />
+            <YAxis 
+              dataKey={x}
+              type="category"
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              width={110}
             />
             <Tooltip 
               contentStyle={{ 
@@ -205,16 +220,23 @@ export function BreakdownChart({ data, title }: ChartProps) {
                 const num = Number(value) || 0;
                 if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
                 if (num >= 1000) return `$${(num / 1000).toFixed(1)}k`;
+                // For percentages
+                if (num < 100 && num > 0) return `${num.toFixed(1)}%`;
                 return `$${num.toFixed(2)}`;
               }}
               cursor={{ fill: 'hsl(var(--muted))', opacity: 0.2 }}
             />
-            <Bar 
-              dataKey={y} 
-              fill="hsl(var(--chart-1))" 
-              radius={[8, 8, 0, 0]}
-              animationDuration={1500}
-            />
+            <Legend />
+            {processedData.map((_, index) => (
+              <Bar 
+                key={index}
+                dataKey={y}
+                fill={colorPalette[index % colorPalette.length]}
+                radius={[0, 8, 8, 0]}
+                animationDuration={1500}
+                name={processedData[index][x]}
+              />
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>

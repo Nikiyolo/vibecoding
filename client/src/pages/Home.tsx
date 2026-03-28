@@ -249,7 +249,7 @@ export default function Home() {
                       </div>
 
                       <div className="bg-white border border-gray-200 rounded-2xl p-6">
-                        <h3 className="text-lg font-bold mb-6 text-foreground">Category Details</h3>
+                        <h3 className="text-lg font-bold mb-6 text-foreground">Impact Analysis</h3>
                         <div className="space-y-3">
                           {analyzeMutation.data.breakdownData.map((item: any, idx: number) => (
                             <div key={idx} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-b-0 last:pb-0">
