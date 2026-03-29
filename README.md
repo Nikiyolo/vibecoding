@@ -60,7 +60,6 @@ The system then displays detailed breakdown results in a new chart section, allo
 
 **AI Data Analysis Flow**
 ```mermaid
-flowchart TD
 User Query (Natural Language)
         │
         ▼
