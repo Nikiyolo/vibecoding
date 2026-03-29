@@ -1,214 +1,104 @@
-AI Conversational Data Analytics System
+**AI Performance Insight Assistant**
 
-A conceptual product design for an AI-powered conversational business intelligence system that allows users to ask data questions in natural language and receive automated analytics, visualizations, and insights.
+The goal of this system is to allow users to ask business questions about performance metrics in natural language, automatically translate the question into structured metrics using NLP, retrieve relevant data, visualize the results, and explain the factors behind performance changes.
 
-The system transforms natural language queries into structured analytics and decision-ready insights.
+**Natural Language Query + Semantic Data Layer + Automated Analytics = Conversational BI**
 
-Product Overview
+**How It Works**
 
-This system enables users to interact with business data through natural language queries.
+**1. User Submits a Natural Language Query**
+Users ask questions directly in natural language, such as:
+“What product had the highest profit margin in Q3?”
+“Show me the cost breakdown by region for 2023.”
+“Why did our revenue drop last month?”
+The system parses the query to identify:
+the metric (e.g., revenue, profit margin)
+the time range (e.g., Q3, last month)
+the dimension (e.g., product, region)
+the query intent (fact query, breakdown analysis, or causal analysis)
 
-Instead of manually writing SQL or building dashboards, users can ask questions such as:
+**2. Query Classification**
+Based on the parsed information, the system classifies the query into one of three types:
+Factual Query – retrieves and visualizes a metric.
+Breakdown Query – analyzes the metric across a specific dimension.
+Causal Query – investigates reasons for changes in a metric.
+This classification determines how the result page will be structured.
 
-What product had the highest profit margin in Q3?
-Show the cost breakdown by region for 2023.
-Why did our revenue drop last month?
-
-The system automatically:
-
-Understands the query
-Retrieves and analyzes data
-Generates visualizations
-Produces insights and recommendations
-
-Query Types:
-The system supports three primary query types.
-
-1. Factual Query
-Example:
-What product had the highest profit margin in Q3?
-System behavior:
-Extract metric
-Extract time range
-Extract dimension
-Display metric visualization
-
-2. Factual Query with Dimension Breakdown
-Example:
-Show me the cost breakdown by region for 2023.
-System behavior:
-Extract metric
-Extract dimension
-Display breakdown visualization
-
-3. Causal Query
-Example:
-Why did our revenue drop last month?
-System behavior:
-Perform time comparison
-Identify contributing factors
-Generate explanations and recommendations
-Result Page Components
-
-The results page dynamically adapts based on the query type.
-Query Type	Components
-Factual Query	Metric visualization
-Breakdown Query	Visualization + dimension breakdown
-Causal Query	Visualization + explanation + impact analysis + recommendations
-Visualization Rules
-
-For factual queries:
-Extract the dimension from the user query
-Use the dimension as the grouping condition
-Display first-level child dimension values
-Use chart legends to differentiate values
-Example:
-Query:
-What product had the highest profit margin in Q3?
-Visualization behavior:
-Use product dimension
-Display each product category
-Different colors represent different categories
-Time Comparison Logic
-
-Causal queries typically require comparison with the previous comparable time period.
-Example:
-Why did revenue drop last month?
-Comparison logic:
-Current Period	Comparison Period
-Last Month	Month Before Last Month
-Q3	Q2
-
-Cross Table Structure
-The system generates a pivot-style comparison table.
-This allows users to easily compare metrics across time periods.
-
-Dimension Drill-down
-Users can perform deeper analysis through dimension drill-down.
-
-Interaction Flow
-User right-clicks a numeric value in a chart
-System shows Dimension Drill-down option
-User selects a dimension
-System displays dimension hierarchy
-User selects a hierarchy level
-
-Example hierarchy:
-Product Dimension
- ├── Product Category
- ├── Product Subcategory
- ├── Material Code
- └── SKU
-
-Drill-down Visualization
-Drill-down results are displayed in a new chart section:
-Dimension Drill-down Details
-
-Visualization rules:
-Horizontal bar chart
-Sorted by descending value
-Different colors for different dimension values
-
-Impact Analysis
-Impact analysis identifies which dimension values contribute most to metric changes.
-Example output:
-Horizontal bar chart
-Ranked by impact
-Highlights most influential dimension values
-
-Handles user interaction.
-Examples:
-Natural language queries
-Dashboard interface
-Application Layer
-Responsible for:
-Query interface
-Result page
-Interactive visualizations
-Drill-down interactions
-AI & Analytics Layer
-
-Core intelligence layer.
-Includes:
-Query understanding
-Query classification
-Automated analytics
-Insight generation
-Semantic Layer
-
-Bridges business language and technical data structures.
-
-Defines:
-
-business metrics
-dimension hierarchies
-calculation rules
-
-Example mapping:
-
-Revenue → fact_sales.revenue
-Profit Margin → profit / revenue
-Region → dim_region.region_name
-Data Layer
-
-Underlying data infrastructure.
-
-Includes:
-
-data warehouse
-fact tables
-dimension tables
-ETL pipelines
-Product Capability Map
-Core Product Capabilities
-Natural Language Query
-
-Users ask business questions directly.
-
-Query Understanding
-
-Extracts:
-
-metrics
-dimensions
-time ranges
-intent
-Semantic Data Layer
-
-Maps business language to data structures.
-
-Automated Analytics
-
-Performs:
-
-aggregation
-time comparison
-dimension drill-down
+**3. Data Retrieval and Analysis**
+The system converts the parsed query into structured data queries through the semantic data layer.
+It then performs automated analytics including:
+metric aggregation
+time-based comparison
+dimension breakdown
 impact analysis
-Visualization
+For causal queries, the system compares the selected time period with the previous comparable period to identify changes.
 
-Generates:
+**4. Visualization and Exploration**
+The results are presented through dynamic visualizations, including:
+charts showing metric trends
+dimension breakdown charts
+pivot tables for time comparison
+horizontal bar charts for impact analysis
+Users can further explore the data through dimension drill-down, which allows them to analyze metrics at more detailed levels of the dimension hierarchy.
+Example hierarchy:
+Product Category
+Product Subcategory
+Material Code
+SKU
 
-charts
-pivot tables
-comparison views
-Insight Generation
+**5. Insight Generation**
+For causal queries, the system generates additional analytical insights, including:
+explanation of metric changes
+identification of key contributing factors
+recommendations for potential improvements
+These insights help users quickly understand why a metric changed and what actions can be taken.
 
-Produces:
+**6. Interactive Drill-down Analysis**
+Users can perform additional analysis by right-clicking on chart values and selecting Dimension Drill-down.
+The system then displays detailed breakdown results in a new chart section, allowing users to explore the data at finer levels of granularity.
 
-trend explanations
-root cause analysis
-recommendations
-Product Value
 
-This system transforms natural language questions into automated analytics and decision-ready insights.
-
-In essence:
-
-Natural Language Query
-        +
-Semantic Data Model
-        +
-Automated Analytics
-        =
-Conversational BI
+**AI Data Analysis Flow**
+User Query (Natural Language)
+        │
+        ▼
+Query Understanding
+(NLP Parsing)
+        │
+        ├── Metric Extraction
+        ├── Time Extraction
+        ├── Dimension Extraction
+        └── Query Type Classification
+                │
+                ▼
+        Query Type
+        ├── Factual Query
+        ├── Factual Query with Breakdown
+        └── Causal Query
+                │
+                ▼
+        Data Query Engine
+        (Generate SQL / Semantic Query)
+                │
+                ▼
+        Data Processing Layer
+        ├── Aggregation
+        ├── Time Comparison
+        ├── Dimension Drill-down
+        └── Impact Calculation
+                │
+                ▼
+        Visualization Engine
+        ├── Charts
+        ├── Cross Tables
+        ├── Drill-down Charts
+        └── Impact Analysis Charts
+                │
+                ▼
+        Insight Generation
+        ├── Trend Summary
+        ├── Root Cause Detection
+        └── Recommendation Generation
+                │
+                ▼
+        Result Page
