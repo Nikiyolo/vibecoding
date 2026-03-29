@@ -60,46 +60,82 @@ The system then displays detailed breakdown results in a new chart section, allo
 
 **AI Data Analysis Flow**
 ```mermaid
-User Query (Natural Language)
-        │
-        ▼
-Query Understanding
-(NLP Parsing)
-        │
-        ├── Metric Extraction
-        ├── Time Extraction
-        ├── Dimension Extraction
-        └── Query Type Classification
-                │
-                ▼
-        Query Type
-        ├── Factual Query
-        ├── Factual Query with Breakdown
-        └── Causal Query
-                │
-                ▼
-        Data Query Engine
-        (Generate SQL / Semantic Query)
-                │
-                ▼
-        Data Processing Layer
-        ├── Aggregation
-        ├── Time Comparison
-        ├── Dimension Drill-down
-        └── Impact Calculation
-                │
-                ▼
-        Visualization Engine
-        ├── Charts
-        ├── Cross Tables
-        ├── Drill-down Charts
-        └── Impact Analysis Charts
-                │
-                ▼
-        Insight Generation
-        ├── Trend Summary
-        ├── Root Cause Detection
-        └── Recommendation Generation
-                │
-                ▼
-        Result Page
+flowchart TD
+
+A[User Query<br>Natural Language]
+
+B[Query Understanding<br>NLP Parsing]
+
+C1[Metric Extraction]
+C2[Time Extraction]
+C3[Dimension Extraction]
+C4[Query Type Classification]
+
+D{Query Type}
+
+D1[Factual Query]
+D2[Factual Query with Breakdown]
+D3[Causal Query]
+
+E[Data Query Engine<br>Generate SQL / Semantic Query]
+
+F[Data Processing Layer]
+
+F1[Aggregation]
+F2[Time Comparison]
+F3[Dimension Drill-down]
+F4[Impact Calculation]
+
+G[Visualization Engine]
+
+G1[Charts]
+G2[Cross Tables]
+G3[Drill-down Charts]
+G4[Impact Analysis Charts]
+
+H[Insight Generation]
+
+H1[Trend Summary]
+H2[Root Cause Detection]
+H3[Recommendation Generation]
+
+I[Result Page]
+
+A --> B
+B --> C1
+B --> C2
+B --> C3
+B --> C4
+
+C4 --> D
+
+D --> D1
+D --> D2
+D --> D3
+
+D1 --> E
+D2 --> E
+D3 --> E
+
+E --> F
+
+F --> F1
+F --> F2
+F --> F3
+F --> F4
+
+F --> G
+
+G --> G1
+G --> G2
+G --> G3
+G --> G4
+
+G --> H
+
+H --> H1
+H --> H2
+H --> H3
+
+H --> I
+```
